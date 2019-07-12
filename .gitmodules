@@ -1,0 +1,3 @@
+[submodule "components/r1"]
+	path = components/r1
+	url = https://github.com/LuxInTenebr1s/esp32_magicsee_r1.git

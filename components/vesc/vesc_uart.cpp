@@ -1,4 +1,4 @@
-#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+//#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 #include <string.h>
 #include "vesc.hpp"
 #include "crc.h"

@@ -12,9 +12,10 @@
 
 #include "ui.h"
 #include "sys_console.h"
+#include "driver/uart.h"
 #include "wifi.h"
 #include "ota_server.h"
-#include "uart_tcp_server.h"
+#include "app.h"
 
 #define TAG "main"
 
@@ -41,9 +42,6 @@ void uart_init(uart_port_t port, int tx_pin, int rx_pin) {
 	uart_driver_install(port, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
 }
 
-uart_tcp_server_t *tcp_srv_1 = NULL;
-uart_tcp_server_t *tcp_srv_2 = NULL;
-
 void app_main() {
 	esp_err_t err = nvs_flash_init();
 	if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -65,13 +63,10 @@ void app_main() {
 
 	ota_server_init();
 
-	wifi_wait_for_ip();
-
 	uart_init(UART_NUM_1, GPIO_NUM_19, GPIO_NUM_18);
-	tcp_srv_1 = uart_tcp_server_new("uart_tcp_srv_1", 6661, UART_NUM_1);
-
 	uart_init(UART_NUM_2, GPIO_NUM_17, GPIO_NUM_16);
-	tcp_srv_2 = uart_tcp_server_new("uart_tcp_srv_2", 6662, UART_NUM_2);
+
+	app_start();
 
 	ui_set_led_mode(UI_LED_IDLE);
 }

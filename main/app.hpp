@@ -30,8 +30,8 @@ public:
 		int dt = 100;
 		float speed_forward = 0.2,
 			  speed_turn = 0.2,
-			  acceleration = 0.1;
-		int speed_max = 30000;
+			  acceleration = 0.05;
+		int speed_max = 100;
 	} param;
 
 	void printState();

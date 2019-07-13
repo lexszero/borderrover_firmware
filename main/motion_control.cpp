@@ -66,12 +66,12 @@ int MotionControl::convertSpeed(float v) {
 
 void MotionControl::goL(float v) {
 	throttle_l = v;
-	m_l.setCurrent(convertSpeed(v));
+	m_l.setDuty(convertSpeed(v));
 }
 
 void MotionControl::goR(float v) {
 	throttle_r = v;
-	m_r.setCurrent(convertSpeed(v));
+	m_r.setDuty(convertSpeed(v));
 }
 
 void MotionControl::go(bool reverse) {
@@ -176,6 +176,11 @@ void MotionControl::update() {
 	bool changed = false;
 	if (v_l != throttle_l || v_r != throttle_r)
 		changed = true;
+
+	if (speed == 0 && omega == 0) {
+		m_l.setCurrent(0);
+		m_r.setCurrent(0);
+	}
 
 	if (changed || moving) {
 		goL(v_l);

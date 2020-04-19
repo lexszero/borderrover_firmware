@@ -77,13 +77,13 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 		case R1_AXIS_X:
 			switch (data->state) {
 				case R1_AXIS_PLUS:
-					mc->turnLeft();
+					mc->turnRight();
 					break;
 				case R1_AXIS_CENTER:
 					mc->resetTurn();
 					break;
 				case R1_AXIS_MINUS:
-					mc->turnRight();
+					mc->turnLeft();
 					break;
 			}
 			break;
@@ -91,13 +91,13 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 		case R1_AXIS_Y:
 			switch (data->state) {
 				case R1_AXIS_PLUS:
-					mc->go(false);
+					mc->go(true);
 					break;
 				case R1_AXIS_CENTER:
 					mc->resetAccel();
 					break;
 				case R1_AXIS_MINUS:
-					mc->go(true);
+					mc->go(false);
 					break;
 			}
 			break;
@@ -105,6 +105,9 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 		case R1_BUTTON7:
 			mc->setBrake(data->state == R1_KEY_PRESSED);
 			break;
+
+		case R1_BUTTON8:
+			mc->setAccelerate(data->state == R1_KEY_PRESSED);
 
 		default:
 			// ignore

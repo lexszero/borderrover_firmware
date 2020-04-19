@@ -1,4 +1,4 @@
-//#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
 #include <math.h>
 
@@ -81,7 +81,17 @@ void MotionControl::run()
 {
 	while (1) {
 		timeAdvance();
-		update();
+		/*
+		if (braking) {
+			m_l.setBrakeCurrent(param.brake_current);
+			m_r.setBrakeCurrent(param.brake_current);
+			m_l.setRPM(0);
+			m_r.setRPM(0);
+		}
+		else {
+			update();
+		}
+		*/
 		vTaskDelay(param.dt / portTICK_PERIOD_MS);
 	}
 }
@@ -93,79 +103,124 @@ float MotionControl::convertSpeed(float v) {
 }
 
 void MotionControl::goL(float v) {
+	/*
 	throttle_l = v;
-	m_l.setDuty(convertSpeed(v));
+	if (v == 0)
+		m_l.setCurrent(0);
+	else
+		m_l.setDuty(-convertSpeed(v));
+	*/
+	//if (moving && v == 0) {
+	//	m_l.setRPM(0);
+	//}
 }
 
 void MotionControl::goR(float v) {
+	/*
 	throttle_r = v;
-	m_r.setDuty(convertSpeed(v));
+	if (v == 0)
+		m_r.setCurrent(0);
+	else
+		m_r.setDuty(-convertSpeed(v));
+	*/
+	//if (moving && v == 0) {
+	//	m_r.setRPM(0);
+	//}
 }
 
 void MotionControl::go(bool reverse) {
 	ESP_LOGI(TAG, "go %s", reverse ? "backward" : "forward");
+	/*
 	if (braking)
 		return;
-	int sign = reverse ? -1 : 1;
+	sign = reverse ? 1 : -1;
 	speed = param.speed_forward * sign;
-	d_speed = param.acceleration * sign;
 	moving = true;
 	update();
+	*/
 }
 
 void MotionControl::turnLeft() {
 	ESP_LOGI(TAG, "turn left");
+	/*
 	if (braking)
 		return;
 	omega = -param.speed_turn;
 	d_omega = -param.acceleration;
 	moving = true;
 	update();
+	*/
 }
 
 void MotionControl::turnRight() {
 	ESP_LOGI(TAG, "turn right");
+	/*
 	if (braking)
 		return;
 	omega = param.speed_turn;
 	d_omega = param.acceleration;
 	moving = true;
 	update();
+	*/
 }
 
 void MotionControl::idle() {
 	ESP_LOGI(TAG, "idle");
+	/*
 	moving = false;
 	resetAccel(false);
 	resetTurn(false);
 	m_l.setCurrent(0);
 	m_r.setCurrent(0);
 	update();
+	*/
 }
 
 void MotionControl::setBrake(bool on) {
 	ESP_LOGI(TAG, "brake %s", on ? "on" : "off");
+	/*
 	if (on) {
 		braking = true;
 		moving = false;
 		m_l.setRPM(0);
 		m_r.setRPM(0);
+		//m_l.setBrakeCurrent(20000);
+		//m_r.setBrakeCurrent(20000);
 	}
 	else {
 		braking = false;
 		idle();
 	}
+	*/
+}
+
+void MotionControl::setAccelerate(bool on) {
+	ESP_LOGI(TAG, "accelerate %s", on ? "on" : "off");
+	/*
+	accelerating = on;
+	*/
 }
 
 void MotionControl::timeAdvance() {
+	/*
 	if (!moving)
 		return;
 
+	if (accelerating) {
+		d_speed = param.acceleration * sign;
+		d_omega = param.acceleration;
+	}
+	else {
+		d_speed = 0;
+		d_omega = 0;
+	}
 	omega = clip(omega + d_omega, -1.0, 1.0);
 	speed = clip(speed + d_speed, -1.0, 1.0);
+	*/
 }
 
 void MotionControl::update() {
+	/*
 	float v_l, v_r;
 
 	float omega_abs = fabs(omega);
@@ -217,18 +272,24 @@ void MotionControl::update() {
 
 	if (changed)
 		printState();
+	*/
 }
 
 void MotionControl::resetAccel(bool upd) {
+	/*
 	speed = 0;
 	d_speed = 0;
+	accelerating = false;
 	if (upd)
 		update();
+	*/
 }
 
 void MotionControl::resetTurn(bool upd) {
+	/*
 	omega = 0;
 	d_omega = 0;
 	if (upd)
 		update();
+	*/
 }

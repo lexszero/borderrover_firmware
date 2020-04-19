@@ -15,9 +15,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
-#include "tcpip_adapter.h"
+#include "esp_netif.h"
 #include "esp_event.h"
-#include "esp_event_loop.h"
+//#include "esp_event_loop.h"
 #include "wifi.h"
 
 #define JOIN_TIMEOUT_MS (10000)

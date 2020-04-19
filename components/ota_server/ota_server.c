@@ -126,7 +126,7 @@ static void ota_server_task(void *param)
 
 	ESP_ERROR_CHECK( esp_ota_end(ota_handle) );
 	esp_err_t err = esp_ota_set_boot_partition(update_partition);
-	char res_buff[50];
+	char res_buff[64];
 	int send_len;
 	if (err == ESP_OK) {
 		send_len = sprintf(res_buff, "200 OK\n\nSuccess. Next boot partition is %s\n", update_partition->label);

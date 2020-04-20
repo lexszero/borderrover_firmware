@@ -51,6 +51,7 @@ private:
 	} esc;
 
 	MotionControl *mc;
+	MotionControlMonitor *mc_monitor;
 
 	static void btRemoteKeyCb(esp_r1_keyboard_data_t *data);
 	static void btRemotePointerCb(esp_r1_pointer_data_t *data);

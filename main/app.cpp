@@ -50,6 +50,9 @@ void Application::btRemoteStart() {
 			Vesc(*esc.left_iface),
 			Vesc(*esc.right_iface));
 
+	mc_monitor = new MotionControlMonitor(
+			*mc, 8042);
+
 	esp_r1_keyboard_register_callback(Application::btRemoteKeyCb);
 	esp_r1_pointer_register_callback(Application::btRemotePointerCb);
 	esp_r1_device_event_register_callback(Application::btRemoteDeviceEventCb);

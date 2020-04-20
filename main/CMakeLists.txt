@@ -1,13 +1,8 @@
-set(COMPONENT_REQUIRES )
-set(COMPONENT_PRIV_REQUIRES )
-
-set(COMPONENT_SRCS
-	"main.c"
-	"app.cpp"
-	"motion_control.cpp"
-	"uart_tcp_server.c"
-	"ui.c"
+idf_component_register(
+	SRC_DIRS "."
+	INCLUDE_DIRS "."
+	REQUIRES 
+		pthread spi_flash nvs_flash
+		sys_console wifi ota_server vesc r1
 	)
-set(COMPONENT_ADD_INCLUDEDIRS "")
 
-register_component()

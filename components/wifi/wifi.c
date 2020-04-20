@@ -120,6 +120,8 @@ esp_err_t wifi_init(void)
 
 	wifi_event_group = xEventGroupCreate();
 
+	esp_netif_create_default_wifi_sta();
+
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 

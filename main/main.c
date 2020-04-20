@@ -54,7 +54,7 @@ void app_main() {
 	}
 	ESP_ERROR_CHECK( err );
 
-	tcpip_adapter_init();
+	esp_netif_init();
 	ESP_ERROR_CHECK(esp_event_loop_create_default());
 	wifi_init();
 	sys_console_init();

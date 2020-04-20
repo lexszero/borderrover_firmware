@@ -1,3 +1,9 @@
 [submodule "components/r1"]
 	path = components/r1
 	url = https://github.com/LuxInTenebr1s/esp32_magicsee_r1.git
+[submodule "third_party/json"]
+	path = third_party/json
+	url = https://github.com/nlohmann/json
+[submodule "main/nlohmann_json"]
+	path = main/nlohmann_json
+	url = https://github.com/nlohmann/json

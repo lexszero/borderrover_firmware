@@ -6,3 +6,6 @@ idf_component_register(
 		sys_console wifi ota_server vesc r1
 	)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(nlohmann_json)
+target_link_libraries(${COMPONENT_LIB} PUBLIC nlohmann_json::nlohmann_json)

@@ -19,64 +19,10 @@ void app_start();
 #include <thread>
 #include <esp_pthread.h>
 #include "uart_tcp_server.h"
-#include "vesc.hpp"
 #include "esp_r1_api.h"
-
-class MotionControl {
-public:
-	MotionControl(Vesc&& _m_l, Vesc&& _m_r);
-
-	struct {
-		int dt = 100;
-		float speed_forward = 0.2,
-			  speed_turn = 0.2,
-			  acceleration = 0.05;
-		int speed_max = 100;
-	} param;
-
-	void printState();
-
-	// Spin motors
-	void goL(float v);
-	void goR(float v);
-
-	// Go straight
-	void go(bool reverse);
-
-	// Turns
-	void turnLeft();
-	void turnRight();
-
-	// Let motors spin freely
-	void idle();
-	// Set brake on/of
-	void setBrake(bool on);
-
-	void resetAccel(bool upd = true);
-	void resetTurn(bool upd = true);
-
-private:
-	Vesc m_l;
-	Vesc m_r;
-	std::thread task;
-
-	bool moving = false;
-	bool braking = false;
-
-	float speed = 0;	// how fast we go, positive is forward
-	float omega = 0;	// how hard we turn, positive is right. if |ω| > 0.5 - turn with both sides
-
-	float d_speed = 0;	// delta for speed
-	float d_omega = 0;	// delta for omega
-
-	float throttle_l = 0;
-	float throttle_r = 0;
-
-	void run();
-	void timeAdvance();
-	void update();
-	int convertSpeed(float v);
-};
+#include "vesc.hpp"
+#include "motion_control.hpp"
+#include "motion_control_monitor.hpp"
 
 class Application {
 public:

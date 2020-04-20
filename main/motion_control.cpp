@@ -1,9 +1,12 @@
 //#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
-#include "app.hpp"
 #include <math.h>
 
-#define TAG "motion_control"
+#include "esp_log.h"
+
+#include "motion_control.hpp"
+
+#define TAG "mc"
 
 float clip(float v, float min, float max) {
 	if (v < min)
@@ -13,44 +16,69 @@ float clip(float v, float min, float max) {
 	return v;
 }
 
+int sign(float v) {
+	if (v < 0)
+		return -1;
+	if (v > 0)
+		return 1;
+	else
+		return 0;
+}
+
 MotionControl::MotionControl(Vesc&& _m_l, Vesc&& _m_r) :
+	Task(TAG, 10),
 	m_l(_m_l),
 	m_r(_m_r)
+{}
+
+void MotionControl::State::print() const
 {
-	auto thr_cfg = esp_pthread_get_default_config();
-	thr_cfg.thread_name = TAG;
-	thr_cfg.prio = 10;
-	esp_pthread_set_cfg(&thr_cfg);
-	task = std::thread([this]() { run(); });
+	static const char *dir[9] = {
+		"↖", "↑", "↗",
+		"←", "⌷", "→",
+		"↙", "↓", "↘",
+	};
+	const char *dir_arrow = dir[(sign(speed)+1)*3 + sign(omega) + 1];
+	const char *dir_motor_l = dir[(sign(throttle_l)+1)*3 + 1];
+	const char *dir_motor_r = dir[(sign(throttle_r)+1)*3 + 1];
+
+	ESP_LOGI(TAG, "Control: [%s] [speed %f, Δ = %f] [omega %f, Δ = %f]",
+			dir_arrow,
+			speed, d_speed,
+			omega, d_omega);
+
+	ESP_LOGI(TAG, "Motor: % 5.3f %s=%s % -5.3f",
+		throttle_l, dir_motor_l, dir_motor_r, throttle_r);
 }
 
-void MotionControl::printState() {
-	const char *s_dir, *s_turn;
-	if (speed > 0) {
-		s_dir = "forward";
-	}
-	else if (speed < 0) {
-		s_dir = "backward";
-	}
-	else {
-		s_dir = "stop";
-	}
-
-	if (omega > 0) {
-		s_turn = "right";
-	}
-	else if (omega < 0) {
-		s_turn = "left";
-	}
-	else {
-		s_turn = "-";
-	}
-
-	ESP_LOGI(TAG, "Control: speed %f (%s, Δ = %f), omega %f (%s, Δ = %f)", speed, s_dir, d_speed, omega, s_turn, d_omega);
-	ESP_LOGI(TAG, "Motor: left %f, right %f ", throttle_l, throttle_r);
+void to_json(json& j, const MotionControl::State& state)
+{
+	j = json {
+		{"speed", state.speed},
+		{"d_speed", state.d_speed},
+		{"omega", state.omega},
+		{"d_omega", state.d_omega},
+		{"throttle_l", state.throttle_l},
+		{"throttle_r", state.throttle_r},
+		{"moving", state.moving},
+		{"accelerating", state.accelerating},
+		{"braking", state.braking}
+	};
 }
 
-void MotionControl::run() {
+const MotionControl::State MotionControl::get_state()
+{
+	std::shared_lock lock(state_mutex);
+	return state;
+}
+
+void MotionControl::on_state_update(StateUpdateCb cb)
+{
+	state_update_callback = cb;
+}
+
+void MotionControl::run()
+{
 	while (1) {
 		timeAdvance();
 		update();
@@ -58,7 +86,7 @@ void MotionControl::run() {
 	}
 }
 
-int MotionControl::convertSpeed(float v) {
+float MotionControl::convertSpeed(float v) {
 	if (v > 1.0)
 		v = 1.0;
 	return v * param.speed_max;

@@ -138,7 +138,7 @@ void Application::handleCmd(app_cmd_t *args) {
 		app->mc->idle();
 	}
 	else if (strcmp(dir, "state") == 0) {
-		app->mc->printState();
+		app->mc->get_state().print();
 	}
 }
 

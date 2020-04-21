@@ -16,7 +16,7 @@ public:
 	const char *name;
 	ReceivePacketCb rx_callback;
 	virtual int sendPacket(uint8_t *packet, int len) = 0;
-	virtual void onPacketCallback(ReceivePacketCb cb);
+	virtual void onPacketCallback(ReceivePacketCb cb) = 0;
 private:
 };
 

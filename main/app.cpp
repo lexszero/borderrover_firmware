@@ -80,13 +80,13 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 		case R1_AXIS_X:
 			switch (data->state) {
 				case R1_AXIS_PLUS:
-					mc->turnRight();
+					mc->turn_right();
 					break;
 				case R1_AXIS_CENTER:
-					mc->resetTurn();
+					mc->reset_turn();
 					break;
 				case R1_AXIS_MINUS:
-					mc->turnLeft();
+					mc->turn_left();
 					break;
 			}
 			break;
@@ -97,7 +97,7 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 					mc->go(true);
 					break;
 				case R1_AXIS_CENTER:
-					mc->resetAccel();
+					mc->reset_accel();
 					break;
 				case R1_AXIS_MINUS:
 					mc->go(false);
@@ -106,11 +106,11 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 			break;
 		
 		case R1_BUTTON7:
-			mc->setBrake(data->state == R1_KEY_PRESSED);
+			mc->set_brake(data->state == R1_KEY_PRESSED);
 			break;
 
 		case R1_BUTTON8:
-			mc->setAccelerate(data->state == R1_KEY_PRESSED);
+			mc->set_accelerate(data->state == R1_KEY_PRESSED);
 
 		default:
 			// ignore
@@ -135,10 +135,10 @@ void Application::handleCmd(app_cmd_t *args) {
 		app->mc->go(false);
 	}
 	else if (strcmp(dir, "l") == 0) {
-		app->mc->turnLeft();
+		app->mc->turn_left();
 	}
 	else if (strcmp(dir, "r") == 0) {
-		app->mc->turnLeft();
+		app->mc->turn_right();
 	}
 	else if (strcmp(dir, "idle") == 0) {
 		app->mc->idle();

@@ -15,11 +15,12 @@ public:
 	struct Param {
 		int dt = 100;
 		float speed_start = 0.2,
-			  speed_forward = 0.2,
 			  speed_turn = 0.2,
 			  acceleration = 0.05;
 		float speed_max = 1;
-		float brake_current = 40000;
+
+		bool brake_reverse_enabled = false;
+		float brake_reverse_current = 10000;
 	} param;
 
 	struct State {
@@ -45,25 +46,21 @@ public:
 	const State get_state();
 	void on_state_update(StateUpdateCb cb);
 
-	// Spin motors
-	void goL(float v);
-	void goR(float v);
-
 	// Go straight
 	void go(bool reverse);
 
 	// Turns
-	void turnLeft();
-	void turnRight();
+	void turn_left();
+	void turn_right();
 
 	// Let motors spin freely
 	void idle();
 	// Set brake on/of
-	void setBrake(bool on);
-	void setAccelerate(bool on);
+	void set_brake(bool on);
+	void set_accelerate(bool on);
 
-	void resetAccel(bool upd = true);
-	void resetTurn(bool upd = true);
+	void reset_accel(bool upd = true);
+	void reset_turn(bool upd = true);
 
 private:
 	Vesc m_l;
@@ -72,11 +69,17 @@ private:
 	State state;
 	mutable std::shared_mutex state_mutex;
 	StateUpdateCb state_update_callback;
+	using state_lock = std::unique_lock<std::shared_mutex>;
+	state_lock get_state_lock();
 
 	void run();
-	void timeAdvance();
-	void update();
-	float convertSpeed(float v);
+	void time_advance();
+	bool update(state_lock&& lock);
+	void idle_unlocked();
+	void reset_accel_unlocked();
+	float convert_speed(float v);
+	void go_l(float v);
+	void go_r(float v);
 };
 
 void to_json(json& j, const MotionControl::State& state);

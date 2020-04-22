@@ -27,12 +27,13 @@ int sign(float v) {
 }
 
 MotionControl::MotionControl(Vesc&& _m_l, Vesc&& _m_r) :
-	Task(TAG, 10),
+	Task::Task(TAG, 8*1024, 10),
 	m_l(_m_l),
 	m_r(_m_r)
 {
 	m_l.getValues();
 	m_r.getValues();
+	Task::start();
 }
 
 void MotionControl::State::print() const

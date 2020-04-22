@@ -72,7 +72,7 @@ private:
 	using state_lock = std::unique_lock<std::shared_mutex>;
 	state_lock get_state_lock();
 
-	void run();
+	void run() override;
 	void time_advance();
 	bool update(state_lock&& lock);
 	void idle_unlocked();

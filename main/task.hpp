@@ -9,11 +9,17 @@
 
 class Task {
 	public:
-		Task(const char* tag, int prio = 10) {
-			auto thr_cfg = esp_pthread_get_default_config();
-			thr_cfg.thread_name = tag;
-			thr_cfg.prio = prio;
-			esp_pthread_set_cfg(&thr_cfg);
+		Task(const char* tag, int stack = 4*1024, int prio = 10) {
+			cfg = esp_pthread_get_default_config();
+			ESP_LOGI("TASK", "%s: creating with stack = %d, prio = %d", tag, stack, prio);
+			cfg.thread_name = tag;
+			cfg.stack_size = stack;
+			cfg.prio = prio;
+		}
+
+		void start() {
+			ESP_LOGI("TASK", "%s: starting", pcTaskGetTaskName(nullptr));
+			esp_pthread_set_cfg(&cfg);
 			task = std::thread([this]() { run(); });
 		}
 
@@ -25,8 +31,14 @@ class Task {
 			ESP_LOGI(pcTaskGetTaskName(nullptr), "%s", ss.str().c_str());
 		}
 	protected:
-		virtual void run() = 0;
+		virtual void run() {
+			ESP_LOGI(pcTaskGetTaskName(nullptr), "FIXME: no overload, sleeping...");
+			while (1) {
+				vTaskDelay(1000 / portTICK_PERIOD_MS);
+			}
+		}
 	
 	private:
 		std::thread task;
+		esp_pthread_cfg_t cfg;
 };

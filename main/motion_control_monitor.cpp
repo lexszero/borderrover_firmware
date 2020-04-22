@@ -12,7 +12,7 @@
 #include "motion_control_monitor.hpp"
 
 MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
-	Task(TAG, 5),
+	Task(TAG, 4*1024, 5),
 	mc(_mc),
 	port(_port)
 {
@@ -25,6 +25,8 @@ MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
 						event,
 						static_cast<EventBits_t>(Event::StateUpdate));
 			});
+
+	Task::start();
 }
 
 void MotionControlMonitor::run() {

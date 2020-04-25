@@ -12,7 +12,7 @@
 #include "motion_control_monitor.hpp"
 
 MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
-	Task(TAG, 4*1024, 5),
+	Task(TAG, 8*1024, 5),
 	mc(_mc),
 	port(_port)
 {
@@ -137,4 +137,7 @@ void MotionControlMonitor::send(int sock, const std::string& str)
 		buf += ret;
 		to_write -= ret;
 	}
+	int ret = ::send(sock, "\n", 1, 0);
+	if (ret < 0)
+		throw std::runtime_error("Error during send()");
 }

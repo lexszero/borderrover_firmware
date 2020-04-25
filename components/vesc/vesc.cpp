@@ -5,12 +5,21 @@
 
 #define TAG (this->interface.name)
 
-Vesc::Vesc(VescInterface& _interface) : interface(_interface) {};
+Vesc::Vesc(VescInterface& _interface) : interface(_interface) {
+	ESP_LOGI(TAG, "starting");
+	interface.onPacketCallback([this](uint8_t *payload) {
+			ESP_LOGD("VESC", "this = %p", this);
+			ESP_LOGD(TAG, "onPacketCallback");
+			processReadPacket(payload);
+			});
+};
 
 bool Vesc::processReadPacket(uint8_t * message) {
 
 	COMM_PACKET_ID packetId;
 	int32_t ind = 0;
+
+	ESP_LOGD(TAG, "processReadPacket");
 
 	packetId = (COMM_PACKET_ID)message[0];
 	message++; // Removes the packetId from the actual message (payload)
@@ -30,24 +39,28 @@ bool Vesc::processReadPacket(uint8_t * message) {
 			ind += 8; // Skip the next 8 bytes 
 			data.tachometer 		= buffer_get_int32(message, &ind);
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
-			printValues();
+			if (cb_values)
+				cb_values(*this);
 			return true;
-
-		break;
+			break;
 
 		default:
+			ESP_LOGW(TAG, "received unexpected packet type: 0x%x", packetId);
 			return false;
-		break;
+			break;
 	}
 }
 
 void Vesc::getValues(void) {
 	uint8_t command[1] = { COMM_GET_VALUES };
 
+	interface.rxStart();
 	interface.sendPacket(command, 1);
-	interface.onPacketCallback([this](uint8_t *payload) {
-			processReadPacket(payload);
-			});
+}
+
+void Vesc::getValues(CallbackFn&& cb) {
+	cb_values = std::move(cb);
+	getValues();
 }
 
 void Vesc::sendMsg(uint8_t *msg, uint16_t len) {

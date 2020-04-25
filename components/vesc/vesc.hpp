@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
+#include "util_task.hpp"
 
 #include "packet.h"
 
@@ -16,19 +17,23 @@ public:
 	const char *name;
 	ReceivePacketCb rx_callback;
 	virtual int sendPacket(uint8_t *packet, int len) = 0;
-	virtual void onPacketCallback(ReceivePacketCb cb) = 0;
+	virtual void onPacketCallback(ReceivePacketCb&& cb) = 0;
+	virtual void rxStart() = 0;
 private:
 };
 
-class VescUartInterface : public VescInterface {
+class VescUartInterface :
+	public VescInterface,
+	protected Task
+{
 public:
 	VescUartInterface(const char *name, uart_port_t uart_port);
 	virtual int sendPacket(uint8_t *packet, int len);
-	virtual void onPacketCallback(VescInterface::ReceivePacketCb cb);
+	virtual void onPacketCallback(VescInterface::ReceivePacketCb&& cb);
+	virtual void rxStart();
 
-	void taskFunc(void);
-	void timerCb(void);
-
+protected:
+	void run() override;
 private: 
 	TaskHandle_t task;
 
@@ -47,8 +52,9 @@ private:
 		
 	} rx_state;
 
-	void doRx();
-	void rxStart();
+	QueueHandle_t uart_queue;
+
+	void receive(int len);
 	void rxStop();
 };
 
@@ -56,7 +62,7 @@ class VescForwardCANInterface : public VescInterface {
 public:
 	VescForwardCANInterface(const char *_name, VescInterface& _interface, uint8_t _id);
 	virtual int sendPacket(uint8_t *packet, int len);
-	virtual void onPacketCallback(VescInterface::ReceivePacketCb cb);
+	virtual void onPacketCallback(VescInterface::ReceivePacketCb&& cb);
 
 private:
 	VescInterface& interface;
@@ -80,7 +86,9 @@ public:
 		long tachometerAbs;
 	} data;
 
+	using CallbackFn = std::function<void(Vesc& vesc)>;
 	void getValues(void);
+	void getValues(CallbackFn&& cb);
 	void printValues(void);
 
 	void sendMsg(uint8_t *payload, uint16_t payload_len);
@@ -95,6 +103,7 @@ public:
 private:
 	VescInterface& interface;
 	bool processReadPacket(uint8_t * message);
+	CallbackFn cb_values;
 
 	uint8_t last_message[256];
 	uint16_t last_message_len;

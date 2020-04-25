@@ -43,8 +43,8 @@ void Application::btRemoteStart() {
 	err = esp_r1_enable();
 	ESP_ERROR_CHECK(err);
 
-	esc.left_iface = new VescUartInterface("esc_left", UART_NUM_1);
-	esc.right_iface = new VescUartInterface("esc_right", UART_NUM_2);
+	esc.left_iface = new VescUartInterface("esc_l", UART_NUM_1);
+	esc.right_iface = new VescUartInterface("esc_r", UART_NUM_2);
 	
 	mc = new MotionControl(
 			Vesc(*esc.left_iface),

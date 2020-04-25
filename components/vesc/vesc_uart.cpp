@@ -1,115 +1,112 @@
 //#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 #include <string.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#include "driver/uart.h"
+
 #include "vesc.hpp"
 #include "crc.h"
 
-struct buffer {
-	uint8_t data;
-	size_t len;
-};
 #define TAG (this->name)
 
-extern "C" void vesc_uart_task(void *arg)
-{
-	VescUartInterface *vesc = (VescUartInterface *)arg;
-	vesc->taskFunc();
-}
+static const auto RX_BUF_SIZE = 512;
 
-extern "C" void vesc_timer_callback(void *arg)
+VescUartInterface::VescUartInterface(const char *name, uart_port_t _uart_port) :
+	VescInterface(name),
+	Task::Task(name, 16*1024, 3),
+	uart_port(_uart_port)
 {
-	VescUartInterface *vesc = (VescUartInterface *)arg;
-	vesc->timerCb();
-}
-
-VescUartInterface::VescUartInterface(const char *name, uart_port_t uart_port) :
-	VescInterface(name) {
 	this->uart_port = uart_port;
 
-	esp_timer_create_args_t vesc_timer_args = {};
-	vesc_timer_args.callback = &vesc_timer_callback;
-	vesc_timer_args.name = name;
-
-	ESP_ERROR_CHECK(esp_timer_create(&vesc_timer_args, &timer));
+	const uart_config_t uart_config = {
+		.baud_rate = 115200,
+		.data_bits = UART_DATA_8_BITS,
+		.parity = UART_PARITY_DISABLE,
+		.stop_bits = UART_STOP_BITS_1,
+		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+	};
+	
+	ESP_LOGI(TAG, "Initializing UART %d", uart_port);
+	uart_driver_install(uart_port, RX_BUF_SIZE * 2, RX_BUF_SIZE * 2, 20, &uart_queue, 0);
+	uart_param_config(uart_port, &uart_config);
 
 	rxStop();
-
-	xTaskCreate(vesc_uart_task, name, 8192, this, 5, &task);
+	Task::start();
 }
 
-void VescUartInterface::taskFunc() {
-/*
-	char uart_path[16];
-	int uart_fd;
-	
-	snprintf(uart_path, sizeof(uart_path), "/dev/uart/%d", uart_port);
-	if ((uart_fd = open(uart_path, O_RDWR | O_NONBLOCK)) == -1) {
-		ESP_LOGE(TAG, "Cannot open UART");
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
-	}
-
-	esp_vfs_dev_uart_use_driver(uart_port);*/
-
+void VescUartInterface::run() {
+	uart_event_t event;
 	while (1) {
-		doRx();
-		if (!rx_state.receiving) {
-			vTaskDelay(1000 / portTICK_PERIOD_MS);
+		if (!xQueueReceive(uart_queue, (void *)&event, (portTickType)portMAX_DELAY))
+			continue;
+		
+		switch (event.type) {
+			case UART_DATA:
+				receive(event.size);
+				break;
+
+			case UART_FIFO_OVF:
+				ESP_LOGW(TAG, "uart fifo overflow");
+				rxStart();
+				break;
+
+			case UART_BUFFER_FULL:
+				ESP_LOGI(TAG, "ring buffer full");
+				rxStart();
+				break;
+
+			case UART_BREAK:
+				ESP_LOGI(TAG, "uart rx break");
+				break;
+
+			case UART_PARITY_ERR:
+				ESP_LOGI(TAG, "uart parity error");
+				break;
+
+			case UART_FRAME_ERR:
+				ESP_LOGI(TAG, "uart frame error");
+				break;
+
+			default:
+				ESP_LOGI(TAG, "uart event type: %d", event.type);
+				break;
 		}
 	}
 }
 
-void VescUartInterface::timerCb() {
-	ESP_LOGI(TAG, "timer callback");
-}
-
 void VescUartInterface::rxStart() {
+	ESP_LOGD(TAG, "rx start");
 	rx_state.receiving = true;
 	rx_state.len = 0;
 	rx_state.end_message = 256;
 	rx_state.payload = NULL;
 	rx_state.payload_len = 0;
 	rx_state.deadline = xTaskGetTickCount() + 100 * portTICK_PERIOD_MS; // Defining the timestamp for timeout (100ms before timeout)
+
+	uart_flush(uart_port);
+	xQueueReset(uart_queue);
 }
 
 void VescUartInterface::rxStop() {
+	ESP_LOGD(TAG, "rx stop");
 	rx_state.receiving = false;
 }
 
-void VescUartInterface::doRx() {
-	esp_err_t err;
-	int length;
-
-	err = uart_get_buffered_data_len(uart_port, (size_t *)&length);
-	if (err != ESP_OK) {
-		ESP_LOGE(TAG, "RX: uart_get_buffered_data_len failed: %s", esp_err_to_name(err));
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-		return;
-	}
-
-	if (!rx_state.receiving) {
-		uart_flush(uart_port);
-		return;
-	}
-	
-	if (xTaskGetTickCount() > rx_state.deadline) {
-		ESP_LOGW(TAG, "RX: timeout");
-		rxStop();
-		return;
-	}
-
-	if (length == 0)
-		return;
-
+void VescUartInterface::receive(int len) {
 	// Messages <= 255 starts with "2", 2nd byte is length
 	// Messages > 255 starts with "3" 2nd and 3rd byte is length combined with 1st >>8 and then &0xFF
 
-	length = uart_read_bytes(uart_port, rx_state.buf + rx_state.len, length, 100 / portTICK_PERIOD_MS);
+	int length = uart_read_bytes(uart_port, rx_state.buf + rx_state.len, len, 100 / portTICK_PERIOD_MS);
 	if (length < 0) {
 		ESP_LOGE(TAG, "RX: uart_read_bytes failed");
 		return;
 	}
 	rx_state.len += length;
+	ESP_LOGD(TAG, "rx %d bytes", length);
 
-	if (rx_state.len == 2) {
+	if (rx_state.len >= 2) {
 		switch (rx_state.buf[0]) {
 			case 2:
 				rx_state.end_message = rx_state.buf[1] + 5; //Payload size + 2 for sice + 3 for SRC and End.
@@ -122,7 +119,7 @@ void VescUartInterface::doRx() {
 				break;
 
 			default:
-				ESP_LOGE(TAG, "RX: Invalid start bit");
+				ESP_LOGE(TAG, "RX: Invalid start byte 0x%x", rx_state.buf[0]);
 				rxStop();
 				break;
 		}
@@ -152,11 +149,11 @@ void VescUartInterface::doRx() {
 		if (crc_msg == crc_calc) {
 			rx_state.payload = rx_state.buf + 2;
 			rx_state.payload_len = rx_state.buf[1];
-			ESP_LOGD(name, "RX: ");
-			ESP_LOG_BUFFER_HEXDUMP(name, rx_state.payload, rx_state.payload_len, ESP_LOG_DEBUG);
+			//ESP_LOGD(name, "RX: ");
+			//ESP_LOG_BUFFER_HEXDUMP(name, rx_state.payload, rx_state.payload_len, ESP_LOG_DEBUG);
 			if (rx_callback) {
 				rx_callback(rx_state.payload);
-				rx_callback = NULL;
+				//rx_callback = NULL;
 			}
 		}
 		else {
@@ -187,9 +184,10 @@ int VescUartInterface::sendPacket(uint8_t * payload, int payload_len) {
 	buf[count++] = (uint8_t)(crc & 0xFF);
 	buf[count++] = 3;
 	buf[count] = '\0';
-
+/*
 	ESP_LOGD(TAG, "TX: ");
 	ESP_LOG_BUFFER_HEXDUMP(name, buf, count, ESP_LOG_DEBUG);
+*/
 
 	// Sending package
 	int ret = uart_write_bytes(uart_port, (const char *)buf, count);
@@ -202,7 +200,6 @@ int VescUartInterface::sendPacket(uint8_t * payload, int payload_len) {
 	return ret;
 }
 
-void VescUartInterface::onPacketCallback(VescInterface::ReceivePacketCb cb) {
+void VescUartInterface::onPacketCallback(VescInterface::ReceivePacketCb&& cb) {
 	rx_callback = std::move(cb);
-	rxStart();
 }

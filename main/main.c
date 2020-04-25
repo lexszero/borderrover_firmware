@@ -28,18 +28,7 @@ void ota_server_start_callback() {
 }
 
 void uart_init(uart_port_t port, int tx_pin, int rx_pin) {
-	const uart_config_t uart_config = {
-		.baud_rate = 115200,
-		.data_bits = UART_DATA_8_BITS,
-		.parity = UART_PARITY_DISABLE,
-		.stop_bits = UART_STOP_BITS_1,
-		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE
-	};
-	
-	ESP_LOGI(TAG, "Initializing UART %d", port);
-	uart_param_config(port, &uart_config);
 	uart_set_pin(port, tx_pin, rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-	uart_driver_install(port, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
 }
 
 void app_main() {

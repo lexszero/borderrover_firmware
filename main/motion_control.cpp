@@ -59,6 +59,7 @@ void MotionControl::State::print() const
 void to_json(json& j, const MotionControl::State& state)
 {
 	j = json {
+		{"timestamp", xTaskGetTickCount()},
 		{"speed", state.speed},
 		{"d_speed", state.d_speed},
 		{"omega", state.omega},
@@ -90,7 +91,11 @@ void MotionControl::on_state_update(StateUpdateCb cb)
 void MotionControl::run()
 {
 	while (1) {
-		time_advance();
+		m_l.getValues();
+		m_r.getValues();
+		state_lock lock(state_mutex);
+		time_advance(lock);
+		update(std::move(lock));
 		/*
 		if (braking) {
 			m_l.setBrakeCurrent(param.brake_current);
@@ -99,7 +104,7 @@ void MotionControl::run()
 			m_r.setRPM(0);
 		}
 		else {
-			update();1 сотка = acre
+			update();
 		}
 		*/
 		vTaskDelay(param.dt / portTICK_PERIOD_MS);
@@ -143,43 +148,39 @@ void MotionControl::go(bool reverse)
 
 	state.speed = param.speed_start * sign;
 	state.moving = true;
-	update(std::move(lock));
+	update(std::move(lock), true);
 }
 
 void MotionControl::turn_left()
 {
 	ESP_LOGI(TAG, "turn left");
 	auto lock = get_state_lock();
-	/*
-	if (braking)
+	if (state.braking)
 		return;
-	omega = -param.speed_turn;
-	d_omega = -param.acceleration;
-	moving = true;
-	update();
-	*/
+	state.omega = -param.speed_turn;
+	state.d_omega = -param.acceleration;
+	state.moving = true;
+	update(std::move(lock), true);
 }
 
 void MotionControl::turn_right()
 {
 	ESP_LOGI(TAG, "turn right");
 	auto lock = get_state_lock();
-	/*
-	if (braking)
+	if (state.braking)
 		return;
-	omega = param.speed_turn;
-	d_omega = param.acceleration;
-	moving = true;
-	update();
-	*/
+	state.omega = param.speed_turn;
+	state.d_omega = param.acceleration;
+	state.moving = true;
+	update(std::move(lock), true);
 }
 
 void MotionControl::idle_unlocked()
 {
 	state.moving = false;
-	reset_accel_unlocked();
 	m_l.setCurrent(0);
 	m_r.setCurrent(0);
+	reset_accel_unlocked();
 }
 
 void MotionControl::reset_accel_unlocked()
@@ -189,20 +190,59 @@ void MotionControl::reset_accel_unlocked()
 	state.accelerating = false;
 }
 
-void MotionControl::idle() {
+void MotionControl::idle()
+{
 	ESP_LOGI(TAG, "idle");
 	auto lock = get_state_lock();
 	idle_unlocked();
-	update(std::move(lock));
+	update(std::move(lock), true);
 }
 
-void MotionControl::set_brake(bool on) {
+void MotionControl::set_brake(bool on)
+{
 	ESP_LOGI(TAG, "brake %s", on ? "on" : "off");
 	auto lock = get_state_lock();
 
 	if (on) {
 		state.braking = true;
 		state.moving = false;
+		//m_l.setBrakeCurrent(20000);
+		//m_r.setBrakeCurrent(20000);
+	}
+	else {
+		state.braking = false;
+		idle_unlocked();
+	}
+	update(std::move(lock), true);
+}
+
+void MotionControl::set_accelerate(bool on) {
+	ESP_LOGI(TAG, "accelerate %s", on ? "on" : "off");
+	auto lock = get_state_lock();
+
+	state.accelerating = on;
+	update(std::move(lock), true);
+}
+
+void MotionControl::time_advance(state_lock& lock) {
+	if (!state.moving)
+		return;
+
+	state.speed = clip(state.speed + state.d_speed, -1.0, 1.0);
+}
+
+void MotionControl::state_notify() {
+	ESP_LOGD(TAG, "changed");
+	state.print();
+	if (state_update_callback)
+		state_update_callback();
+}
+
+bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
+	float v_l, v_r;
+	
+	bool changed = false;
+	if (state.braking) {
 		if (param.brake_reverse_enabled) {
 			m_l.setCurrent(-sign(state.throttle_l) * param.brake_reverse_current);
 			m_l.setCurrent(-sign(state.throttle_r) * param.brake_reverse_current);
@@ -211,82 +251,48 @@ void MotionControl::set_brake(bool on) {
 			m_l.setRPM(0);
 			m_r.setRPM(0);
 		}
-		//m_l.setBrakeCurrent(20000);
-		//m_r.setBrakeCurrent(20000);
+		return false;
 	}
 	else {
-		state.braking = false;
-		idle_unlocked();
-		update(std::move(lock));
+		if (state.accelerating) {
+			state.d_speed = param.acceleration * sign(state.speed);
+		}
+		else {
+			state.d_speed = 0;
+		}
+
+		v_l = state.speed;
+		v_r = state.speed;
+
+		if (v_l != state.throttle_l || v_r != state.throttle_r)
+			changed = true;
+
+		if (state.speed == 0) {
+			m_l.setCurrent(0);
+			m_r.setCurrent(0);
+		}
+
+		if (changed || state.moving) {
+			go_l(v_l);
+			go_r(v_r);
+		}
 	}
-}
-
-void MotionControl::set_accelerate(bool on) {
-	ESP_LOGI(TAG, "accelerate %s", on ? "on" : "off");
-	auto lock = get_state_lock();
-
-	state.accelerating = on;
-	if (state.accelerating) {
-		state.d_speed = param.acceleration * sign(state.speed);
-	}
-	else {
-		state.d_speed = 0;
-	}
-	update(std::move(lock));
-}
-
-void MotionControl::time_advance() {
-	auto lock = get_state_lock();
-
-	if (!state.moving)
-		return;
-
-	state.speed = clip(state.speed + state.d_speed, -1.0, 1.0);
-	update(std::move(lock));
-}
-
-bool MotionControl::update(MotionControl::state_lock&& lock) {
-	float v_l, v_r;
-
-	v_l = state.speed;
-	v_r = state.speed;
-
-	bool changed = false;
-	if (v_l != state.throttle_l || v_r != state.throttle_r)
-		changed = true;
-
-	if (state.speed == 0) {
-		m_l.setCurrent(0);
-		m_r.setCurrent(0);
-	}
-
-	if (changed && state.moving) {
-		go_l(v_l);
-		go_r(v_r);
-	}
-
-	/*
-	if (changed && state_update_callback)
-		state_update_callback();
-	*/
 
 	lock.unlock();
 
-	if (changed) {
-		state.print();
-		if (state_update_callback)
-			state_update_callback();
+	if (changed || notify) {
+		state_notify();
 	}
 
 	return changed;
 }
 
-void MotionControl::reset_accel(bool upd)
+void MotionControl::reset_accel()
 {
 	auto lock = get_state_lock();
 	reset_accel_unlocked();
 }
 
-void MotionControl::reset_turn(bool upd)
+void MotionControl::reset_turn()
 {
 }

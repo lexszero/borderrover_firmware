@@ -59,8 +59,8 @@ public:
 	void set_brake(bool on);
 	void set_accelerate(bool on);
 
-	void reset_accel(bool upd = true);
-	void reset_turn(bool upd = true);
+	void reset_accel();
+	void reset_turn();
 
 private:
 	Vesc m_l;
@@ -73,8 +73,9 @@ private:
 	state_lock get_state_lock();
 
 	void run() override;
-	void time_advance();
-	bool update(state_lock&& lock);
+	void time_advance(state_lock& lock);
+	void state_notify();
+	bool update(state_lock&& lock, bool notify = false);
 	void idle_unlocked();
 	void reset_accel_unlocked();
 	float convert_speed(float v);

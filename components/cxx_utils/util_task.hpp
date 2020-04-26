@@ -37,8 +37,9 @@ class Task {
 				vTaskDelay(1000 / portTICK_PERIOD_MS);
 			}
 		}
+		
+		std::thread task;
 	
 	private:
-		std::thread task;
 		esp_pthread_cfg_t cfg;
 };

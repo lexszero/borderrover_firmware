@@ -3,13 +3,12 @@
 #include <sstream>
 #include <thread>
 #include <esp_pthread.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 #include <esp_log.h>
 
 class Task {
 	public:
-		Task(const char* tag, int stack = 4*1024, int prio = 10) {
+		Task(const char* tag, int stack = 4*1024, int prio = 10)
+		{
 			cfg = esp_pthread_get_default_config();
 			ESP_LOGI("TASK", "%s: creating with stack = %d, prio = %d", tag, stack, prio);
 			cfg.thread_name = tag;
@@ -30,6 +29,12 @@ class Task {
 				<< ", minimum free stack: " << uxTaskGetStackHighWaterMark(nullptr) << " bytes.";
 			ESP_LOGI(pcTaskGetTaskName(nullptr), "%s", ss.str().c_str());
 		}
+
+	TaskHandle_t get_handle() {
+		pthread_t thr = (task.native_handle());
+		return esp_pthread_get_handle(thr);
+	}
+
 	protected:
 		virtual void run() {
 			ESP_LOGI(pcTaskGetTaskName(nullptr), "FIXME: no overload, sleeping...");

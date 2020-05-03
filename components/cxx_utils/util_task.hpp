@@ -17,9 +17,10 @@ class Task {
 		}
 
 		void start() {
-			ESP_LOGI("TASK", "%s: starting", pcTaskGetTaskName(nullptr));
+			ESP_LOGI("TASK", "%s: starting %s", pcTaskGetTaskName(nullptr), cfg.thread_name);
 			esp_pthread_set_cfg(&cfg);
 			task = std::thread([this]() { run(); });
+			running = true;
 		}
 
 		void print_info() {
@@ -47,4 +48,5 @@ class Task {
 	
 	private:
 		esp_pthread_cfg_t cfg;
+		bool running;
 };

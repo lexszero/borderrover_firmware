@@ -62,7 +62,7 @@ class VescForwardCANInterface : public VescInterface {
 public:
 	VescForwardCANInterface(const char *_name, VescInterface& _interface, uint8_t _id);
 	virtual int sendPacket(uint8_t *packet, int len);
-	virtual void onPacketCallback(VescInterface::ReceivePacketCb&& cb);
+	virtual void onPacketCallback(VescInterface::ReceivePacketCb cb);
 
 private:
 	VescInterface& interface;
@@ -74,7 +74,11 @@ class Vesc {
 public:
 	Vesc(VescInterface& _interface);
 
+	Vesc(Vesc&) = delete;
+	Vesc() = delete;
+
 	struct vescData {
+		TickType_t timestamp;
 		float avgMotorCurrent;
 		float avgInputCurrent;
 		float dutyCycleNow;
@@ -84,12 +88,13 @@ public:
 		float ampHoursCharged;
 		long tachometer;
 		long tachometerAbs;
+
 	} data;
 
 	using CallbackFn = std::function<void(Vesc& vesc)>;
+	void onValues(CallbackFn&& cb);
 	void getValues(void);
-	void getValues(CallbackFn&& cb);
-	void printValues(void);
+	void printValues();
 
 	void sendMsg(uint8_t *payload, uint16_t payload_len);
 	void setCurrent(float current);

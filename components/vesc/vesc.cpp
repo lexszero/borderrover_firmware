@@ -1,3 +1,5 @@
+//#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+#include <functional>
 #include <string.h>
 #include "vesc.hpp"
 #include "datatypes.h"
@@ -6,27 +8,30 @@
 #define TAG (this->interface.name)
 
 Vesc::Vesc(VescInterface& _interface) : interface(_interface) {
-	ESP_LOGI(TAG, "starting");
-	interface.onPacketCallback([this](uint8_t *payload) {
-			ESP_LOGD("VESC", "this = %p", this);
-			ESP_LOGD(TAG, "onPacketCallback");
-			processReadPacket(payload);
-			});
+	ESP_LOGI(TAG, "initializing");
+	interface.onPacketCallback(std::move(std::bind(&Vesc::processReadPacket, this, std::placeholders::_1)));
 };
 
+void Vesc::printValues() {
+	ESP_LOGI(TAG, "Im %f, duty %f, rpm %ld, U %f, ∑ %ld",
+			data.avgMotorCurrent,
+			data.dutyCycleNow,
+			data.rpm,
+			data.inpVoltage,
+			data.tachometerAbs);
+}
+
 bool Vesc::processReadPacket(uint8_t * message) {
+	ESP_LOGD(TAG, "processReadPacket, this = %p, this->interface = %p", this, &this->interface);
 
 	COMM_PACKET_ID packetId;
 	int32_t ind = 0;
-
-	ESP_LOGD(TAG, "processReadPacket");
 
 	packetId = (COMM_PACKET_ID)message[0];
 	message++; // Removes the packetId from the actual message (payload)
 
 	switch (packetId){
 		case COMM_GET_VALUES: // Structure defined here: https://github.com/vedderb/bldc/blob/43c3bbaf91f5052a35b75c2ff17b5fe99fad94d1/commands.c#L164
-
 			ind = 4; // Skip the first 4 bytes 
 			data.avgMotorCurrent 	= buffer_get_float32(message, 100.0, &ind);
 			data.avgInputCurrent 	= buffer_get_float32(message, 100.0, &ind);
@@ -39,8 +44,11 @@ bool Vesc::processReadPacket(uint8_t * message) {
 			ind += 8; // Skip the next 8 bytes 
 			data.tachometer 		= buffer_get_int32(message, &ind);
 			data.tachometerAbs 		= buffer_get_int32(message, &ind);
-			if (cb_values)
+
+			data.timestamp = xTaskGetTickCount();
+			if (cb_values) {
 				cb_values(*this);
+			}
 			return true;
 			break;
 
@@ -58,9 +66,9 @@ void Vesc::getValues(void) {
 	interface.sendPacket(command, 1);
 }
 
-void Vesc::getValues(CallbackFn&& cb) {
-	cb_values = std::move(cb);
-	getValues();
+void Vesc::onValues(CallbackFn&& cb) {
+	ESP_LOGD(TAG, "set onValues cb, this = %p", this);
+	cb_values = cb;
 }
 
 void Vesc::sendMsg(uint8_t *msg, uint16_t len) {
@@ -107,18 +115,6 @@ void Vesc::setDuty(float duty) {
 	buffer_append_int32(payload, (int32_t)(duty * 100000), &index);
 
 	interface.sendPacket(payload, 5);
-}
-
-void Vesc::printValues() {
-	ESP_LOGI(TAG, "avgMotorCurrent: %f", data.avgMotorCurrent);
-	ESP_LOGI(TAG, "avgInputCurrent: %f", data.avgInputCurrent);
-	ESP_LOGI(TAG, "dutyCycleNow: %f", data.dutyCycleNow);
-	ESP_LOGI(TAG, "rpm: %ld", data.rpm);
-	ESP_LOGI(TAG, "inputVoltage: %f", data.inpVoltage);
-	ESP_LOGI(TAG, "ampHours: %f", data.ampHours);
-	ESP_LOGI(TAG, "ampHoursCharges: %f", data.ampHoursCharged);
-	ESP_LOGI(TAG, "tachometer: %ld", data.tachometer);
-	ESP_LOGI(TAG, "tachometerAbs: %ld", data.tachometerAbs);
 }
 
 void Vesc::kill() {

@@ -27,6 +27,15 @@ int app_cmd_handler(int argc, char **argv) {
 
 Application::Application() {};
 
+Application::controller::controller() :
+	left_iface("esc_l", UART_NUM_1),
+	right_iface("esc_r", UART_NUM_2),
+	left(left_iface),
+	right(right_iface),
+	mc(left, right),
+	monitor(mc, 8042)
+{}
+
 void Application::tcpBridgeStart() {
 	ESP_LOGI(TAG, "Starting TCP bridge mode");
 	wifi_wait_for_ip();
@@ -43,15 +52,7 @@ void Application::btRemoteStart() {
 	err = esp_r1_enable();
 	ESP_ERROR_CHECK(err);
 
-	esc.left_iface = new VescUartInterface("esc_l", UART_NUM_1);
-	esc.right_iface = new VescUartInterface("esc_r", UART_NUM_2);
-	
-	mc = new MotionControl(
-			Vesc(*esc.left_iface),
-			Vesc(*esc.right_iface));
-
-	mc_monitor = new MotionControlMonitor(
-			*mc, 8042);
+	ctrl = new controller();
 
 	esp_r1_keyboard_register_callback(Application::btRemoteKeyCb);
 	esp_r1_pointer_register_callback(Application::btRemotePointerCb);
@@ -75,18 +76,18 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 	ESP_LOGD(TAG, "Key %s - %d", esp_r1_event_name_get_by_id(data->id), data->state);
 	if (!app)
 		return;
-	auto mc = app->mc;
+	auto& mc = app->ctrl->mc;
 	switch (data->id) {
 		case R1_AXIS_X:
 			switch (data->state) {
 				case R1_AXIS_PLUS:
-					mc->turn_right();
+					mc.turn_right();
 					break;
 				case R1_AXIS_CENTER:
-					mc->reset_turn();
+					mc.reset_turn();
 					break;
 				case R1_AXIS_MINUS:
-					mc->turn_left();
+					mc.turn_left();
 					break;
 			}
 			break;
@@ -94,23 +95,23 @@ void Application::btRemoteKeyCb(esp_r1_keyboard_data_t *data) {
 		case R1_AXIS_Y:
 			switch (data->state) {
 				case R1_AXIS_PLUS:
-					mc->go(true);
+					mc.go(true);
 					break;
 				case R1_AXIS_CENTER:
-					mc->reset_accel();
+					mc.reset_accel();
 					break;
 				case R1_AXIS_MINUS:
-					mc->go(false);
+					mc.go(false);
 					break;
 			}
 			break;
 		
 		case R1_BUTTON7:
-			mc->set_brake(data->state == R1_KEY_PRESSED);
+			mc.set_brake(data->state == R1_KEY_PRESSED);
 			break;
 
 		case R1_BUTTON8:
-			mc->set_accelerate(data->state == R1_KEY_PRESSED);
+			mc.set_accelerate(data->state == R1_KEY_PRESSED);
 
 		default:
 			// ignore
@@ -126,25 +127,25 @@ void Application::btRemoteDeviceEventCb(enum esp_r1_device_event_e event) {
 	if (!app)
 		return;
 	if (event == R1_EVENT_DISCONNECTED)
-		app->mc->idle();
+		app->ctrl->mc.idle();
 }
 
 void Application::handleCmd(app_cmd_t *args) {
 	const char *dir = args->dir->sval[0];
 	if (strcmp(dir, "fwd") == 0) {
-		app->mc->go(false);
+		app->ctrl->mc.go(false);
 	}
 	else if (strcmp(dir, "l") == 0) {
-		app->mc->turn_left();
+		app->ctrl->mc.turn_left();
 	}
 	else if (strcmp(dir, "r") == 0) {
-		app->mc->turn_right();
+		app->ctrl->mc.turn_right();
 	}
 	else if (strcmp(dir, "idle") == 0) {
-		app->mc->idle();
+		app->ctrl->mc.idle();
 	}
 	else if (strcmp(dir, "state") == 0) {
-		app->mc->get_state().print();
+		app->ctrl->mc.get_state().print();
 	}
 }
 

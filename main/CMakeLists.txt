@@ -14,5 +14,5 @@ set_source_files_properties(
 	PROPERTIES COMPILE_FLAGS -std=c++17)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
-add_subdirectory(nlohmann_json)
+#add_subdirectory(nlohmann_json)
 target_link_libraries(${COMPONENT_LIB} PUBLIC nlohmann_json::nlohmann_json)

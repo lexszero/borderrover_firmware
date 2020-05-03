@@ -1,4 +1,4 @@
-#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+//#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
 #include <utility>
 #include <math.h>
@@ -26,14 +26,29 @@ int sign(float v) {
 		return 0;
 }
 
-MotionControl::MotionControl(Vesc&& _m_l, Vesc&& _m_r) :
+MotionControl::MotionControl(Vesc& _m_l, Vesc& _m_r) :
 	Task::Task(TAG, 8*1024, 10),
 	m_l(_m_l),
 	m_r(_m_r)
 {
-	m_l.getValues();
-	m_r.getValues();
+	m_l.onValues([&](Vesc& m) {
+			events.set(MotorValues_Left);
+		});
+	m_r.onValues([&](Vesc& m) {
+			events.set(MotorValues_Right);
+		});
 	Task::start();
+}
+
+Vesc& MotionControl::motor_by_id(MotorId id)
+{
+	switch (id) {
+		case Left:
+			return m_l;
+		case Right:
+			return m_r;
+	}
+	throw std::runtime_error("Bad motor id");
 }
 
 void MotionControl::State::print() const
@@ -59,7 +74,7 @@ void MotionControl::State::print() const
 void to_json(json& j, const MotionControl::State& state)
 {
 	j = json {
-		{"timestamp", xTaskGetTickCount()},
+		{"timestamp", state.timestamp},
 		{"speed", state.speed},
 		{"d_speed", state.d_speed},
 		{"omega", state.omega},
@@ -69,6 +84,22 @@ void to_json(json& j, const MotionControl::State& state)
 		{"moving", state.moving},
 		{"accelerating", state.accelerating},
 		{"braking", state.braking}
+	};
+}
+
+void to_json(json& j, const Vesc::vescData& data)
+{
+	j = json {
+		{"timestamp", data.timestamp},
+		{"I_motor", data.avgMotorCurrent},
+		{"I_input", data.avgInputCurrent},
+		{"duty", data.dutyCycleNow},
+		{"rpm", data.rpm},
+		{"U", data.inpVoltage},
+		{"E", data.ampHours},
+		{"E_ch", data.ampHoursCharged},
+		{"tach", data.tachometer},
+		{"tach_abs", data.tachometerAbs}
 	};
 }
 
@@ -83,9 +114,19 @@ MotionControl::state_lock MotionControl::get_state_lock()
 	return MotionControl::state_lock(state_mutex);
 }
 
-void MotionControl::on_state_update(StateUpdateCb cb)
+void MotionControl::on_state_update(CallbackFn cb)
 {
 	state_update_callback = cb;
+}
+
+void MotionControl::on_motor_values(CallbackFn cb)
+{
+	motor_values_callback = cb;
+}
+
+const Vesc::vescData& MotionControl::get_motor_values(MotorId id)
+{
+	return motor_by_id(id).data;
 }
 
 void MotionControl::run()
@@ -93,6 +134,18 @@ void MotionControl::run()
 	while (1) {
 		m_l.getValues();
 		m_r.getValues();
+		auto ev = events.wait(Event(MotorValues_Left | MotorValues_Right),
+				param.dt / portTICK_PERIOD_MS,
+				true,
+				true);
+
+		if (ev) {
+			ESP_LOGD(TAG, "got motor values");
+			events.set(MotorValues);
+			if (motor_values_callback)
+				motor_values_callback();
+		}
+
 		state_lock lock(state_mutex);
 		time_advance(lock);
 		update(std::move(lock));
@@ -178,8 +231,8 @@ void MotionControl::turn_right()
 void MotionControl::idle_unlocked()
 {
 	state.moving = false;
-	m_l.setCurrent(0);
-	m_r.setCurrent(0);
+	m_l.kill();
+	m_r.kill();
 	reset_accel_unlocked();
 }
 
@@ -234,11 +287,13 @@ void MotionControl::time_advance(state_lock& lock) {
 void MotionControl::state_notify() {
 	ESP_LOGD(TAG, "changed");
 	state.print();
+	events.set(Event::StateUpdate);
 	if (state_update_callback)
 		state_update_callback();
 }
 
 bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
+	ESP_LOGD(TAG, "update");
 	float v_l, v_r;
 	
 	bool changed = false;
@@ -248,8 +303,8 @@ bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
 			m_l.setCurrent(-sign(state.throttle_r) * param.brake_reverse_current);
 		}
 		else {
-			m_l.setRPM(0);
-			m_r.setRPM(0);
+			m_l.brake();
+			m_r.brake();
 		}
 		return false;
 	}
@@ -277,6 +332,8 @@ bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
 			go_r(v_r);
 		}
 	}
+
+	state.timestamp = xTaskGetTickCount();
 
 	lock.unlock();
 

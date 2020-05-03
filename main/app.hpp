@@ -46,12 +46,17 @@ private:
 
 	control_mode_e control_mode = CONTROL_MODE_DISABLED;
 
-	struct {
-		VescInterface* left_iface, *right_iface;
-	} esc;
+	class controller {
+	public:
+		controller();
 
-	MotionControl *mc;
-	MotionControlMonitor *mc_monitor;
+		VescUartInterface left_iface, right_iface;
+		Vesc left, right;
+		MotionControl mc;
+		MotionControlMonitor monitor;
+	};
+
+	controller *ctrl;
 
 	static void btRemoteKeyCb(esp_r1_keyboard_data_t *data);
 	static void btRemotePointerCb(esp_r1_pointer_data_t *data);

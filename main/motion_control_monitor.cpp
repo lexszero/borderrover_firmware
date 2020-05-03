@@ -16,14 +16,12 @@ MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
 	mc(_mc),
 	port(_port)
 {
-	event = xEventGroupCreateStatic(&event_buf);
-	if (!event)
-		throw std::runtime_error("Unable to create event group");
-
 	mc.on_state_update([this]() {
-				xEventGroupSetBits(
-						event,
-						static_cast<EventBits_t>(Event::StateUpdate));
+				events.set(Event::StateUpdate);
+			});
+
+	mc.on_motor_values([this]() {
+				events.set(Event::MotorValues);
 			});
 
 	Task::start();
@@ -101,20 +99,18 @@ void MotionControlMonitor::do_send(int sock)
 
 	try {
 		while (1) {
-			Event ev;
-			ev = static_cast<Event>(xEventGroupWaitBits(
-					event,
-					static_cast<EventBits_t>(Event::Any),
-					true,
-					false,
-					timeout));
-	
+			Event ev = events.wait(Event::Any, timeout);
+
 			if (ev & Event::StateUpdate) {
 				json msg = {
 					{"type", "state"},
 					{"data", mc.get_state()}
 				};
 				send(sock, msg.dump());
+			}
+			if (ev & Event::MotorValues) {
+				send_motor(sock, "left", mc.get_motor_values(Left));
+				send_motor(sock, "right", mc.get_motor_values(Right));
 			}
 			else {
 				send(sock, keepalive);
@@ -140,4 +136,14 @@ void MotionControlMonitor::send(int sock, const std::string& str)
 	int ret = ::send(sock, "\n", 1, 0);
 	if (ret < 0)
 		throw std::runtime_error("Error during send()");
+}
+
+void MotionControlMonitor::send_motor(int sock, const char *id, const Vesc::vescData& data)
+{
+	json msg = {
+		{"type", "motor"},
+		{"id", id},
+		{"data", data}
+	};
+	send(sock, msg.dump());
 }

@@ -15,7 +15,7 @@ static const auto RX_BUF_SIZE = 512;
 
 VescUartInterface::VescUartInterface(const char *name, uart_port_t _uart_port) :
 	VescInterface(name),
-	Task::Task(name, 16*1024, 3),
+	Task::Task(name, 16*1024, 20),
 	uart_port(_uart_port)
 {
 	this->uart_port = uart_port;

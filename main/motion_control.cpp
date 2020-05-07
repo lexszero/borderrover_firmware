@@ -27,7 +27,7 @@ int sign(float v) {
 }
 
 MotionControl::MotionControl(Vesc& _m_l, Vesc& _m_r) :
-	Task::Task(TAG, 8*1024, 10),
+	Task::Task(TAG, 8*1024, 15),
 	m_l(_m_l),
 	m_r(_m_r)
 {

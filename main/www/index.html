@@ -1,0 +1,263 @@
+<html>
+
+<head>
+<!-- Plotly.js -->
+<!-- <script src="https://cdn.plot.ly/plotly-latest.min.js"></script> -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.2/jquery.min.js"></script>
+
+
+<style>
+  .line {
+    fill: none;
+    stroke: steelblue;
+    stroke-width: 1.5px;
+  }
+
+  .legenditem {
+    float: left;
+    padding-right: 10px;
+  }
+</style>
+
+</head>
+<body>
+<div id="motor_left_legend" class="legend"></div>
+<br>
+<svg id="motor_left" width="800" height="200"></svg>
+<br>
+<div id="motor_right_legend" class="legend"></div>
+<br>
+<svg id="motor_right" width="800" height="200"></svg>
+<br>
+<div id="state_legend" class="legend"></div>
+<br>
+<svg id="state" width="800" height="200"></svg>
+<br>
+
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+/*
+    ws.onopen = function()
+    {
+        // Web Socket is connected, send data using send()
+        ws.send("Message to send");
+
+        request_data_interval = window.setInterval(requestData, 50);
+
+    };
+*/
+
+class Plot {
+  constructor(name, traces) {
+    this.name = name;
+    this.traces = traces;
+    this.data = this.traces.map(item => {return {
+        label: item.label,
+        id: item.id,
+        convert: item.convert,
+        values: [],
+    }});
+
+    this.svg = d3.select("#"+this.name)
+    this.margin = {
+        top: 5,
+        right: 5,
+        bottom: 50,
+        left: 30
+      },
+    this.width = Math.floor(this.svg.attr("width") - this.margin.left - this.margin.right),
+    this.height = Math.floor(this.svg.attr("height") - this.margin.top - this.margin.bottom);
+
+    this.g = this.svg.append("g").attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
+
+    this.g.append("defs").append("clipPath")
+      .attr("id", "clip2")
+      .append("rect")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", this.width)
+      .attr("height", this.height);
+
+    this.x = d3.scaleTime().range([0, this.width]),
+    this.y = d3.scaleLinear().range([this.height, 0]),
+    this.z = d3.scaleOrdinal(d3.schemeCategory10);
+
+    this.y.domain([0, 10000]);
+    var plot = this;
+    this.line = d3.line()
+      .curve(d3.curveBasis)
+      .x(function(d) {
+        return plot.x(d.timestamp);
+      })
+      .y(function(d) {
+        return plot.y(d.value);
+      });
+
+    this.z.domain(this.data.map(function(c) {
+      return c.id;
+    }));
+
+    this.x_axis = d3.axisBottom()
+      .scale(this.x);
+    this.x_axis_svg = this.g.append("g")
+      .attr("class", "axis axis--x")
+      .attr("transform", "translate(0," + this.height + ")");
+
+    this.x_axis_svg.call(this.x_axis);
+
+    this.g.append("g")
+      .attr("class", "axis axis--y")
+      .call(d3.axisLeft(this.y))
+      .append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 6)
+      .attr("dy", "0.71em")
+      .attr("fill", "#000")
+      .text("Speed");
+
+    this.pathsG = this.g.append("g").attr("id", "paths").attr("class", "paths")
+      .attr("clip-path", "url(#clip2)");
+
+    this.globalX = 0;
+    this.duration = 1000; //how quickly to move (will look jerky if less that data input rate)
+    this.limit = 60; // how many datapoints, total points = (duration * limit)
+  }
+
+  push(new_entry) {
+    let now = new Date();
+    this.data.forEach((trace) => {
+      let val = new_entry[trace.id]
+      if (trace.convert) {
+        val = trace.convert(val);
+      };
+
+      trace.values.push({
+        timestamp: new_entry.timestamp,
+        value: val,
+      });
+    });
+
+    // Shift domain
+    this.x.domain([now - ((this.limit - 2) * this.duration), now - this.duration])
+    // Slide x-axis left
+    this.x_axis_svg.transition().duration(this.duration).ease(d3.easeLinear, 2).call(this.x_axis);
+
+    //Join
+    var traceG = this.pathsG.selectAll(".traceLine").data(this.data);
+    var traceGEnter = traceG.enter()
+    //Enter
+      .append("g")
+      .attr("class", "traceLine")
+      .merge(traceG);
+
+    //Join
+    var traceSVG = traceGEnter.selectAll("path").data(function(d) {
+      return [d];
+    });
+    var plot = this;
+    var traceSVGenter = traceSVG.enter()
+    //Enter
+      .append("path").attr("class", "line")
+      .style("stroke", function(d) {
+        return plot.z(d.id);
+      })
+      .merge(traceSVG)
+    //Update
+      .transition()
+      .duration(plot.duration)
+      .ease(d3.easeLinear, 2)
+      .attr("d", function(d) {
+        return plot.line(d.values)
+      })
+      .attr("transform", null)
+
+    var traceText = d3.select("#"+this.name+"_legend").selectAll("div").data(this.data)
+    var traceEnter = traceText.enter()
+      .append("div")
+      .attr("class", "legenditem")
+      .style("color", function(d) {
+        return plot.z(d.id);
+      })
+      .merge(traceText)
+      .text(function(d) {
+        return d.label + ":" + d.values[d.values.length - 1].value;
+      })
+  };
+};
+
+class MotorPlot extends Plot {
+  constructor(name) {
+    super("motor_" + name, [
+      {
+        id: "rpm",
+        label: "RPM",
+      },
+      {
+        id: "I_motor",
+        label: "Current (mA)",
+        convert: x => {return int(x * 1000)},
+      }
+    ]);
+  }
+};
+
+class StatePlot extends Plot {
+  constructor() {
+    super("state", [
+      {
+        id: "speed",
+        label: "Speed",
+      },
+      {
+        id: "throttle_l",
+        label: "Throttle L",
+      },
+      {
+        id: "throttle_r",
+        label: "Throttle r",
+      },
+    ]);
+    this.y.domain([0, 1]);
+  };
+};
+
+    var plot_motor_left = new MotorPlot('left');
+    var plot_motor_right = new MotorPlot('right');
+    var plot_state = new StatePlot();
+
+    var ws = new WebSocket("ws://192.168.0.244:8042/")
+    ws.onmessage = function (evt) 
+    { 
+        var received_msg = evt.data;
+
+        data = JSON.parse(evt.data);
+        if (data.type == 'motor_state') {
+          plot_motor_left.push(data.left);
+          plot_motor_right.push(data.right);
+        }
+        if (data.type == 'mc_state') {
+          plot_state.push(data.data);
+        }
+    };
+
+/*
+    ws.onclose = function()
+    { 
+      // websocket is closed.
+      window.clearInterval(request_data_interval)
+    };
+    
+    function requestData()
+    {
+        ws.send("get-data");
+    }
+  */
+</script>
+
+</body>
+<!--
+<div id="motor_left" style="width: 800px; height: 400px;">
+<div id="motor_right" style="width: 800px; height: 400px;">
+<div id="mc" style="width: 800px; height: 400px;">
+-->
+</html>

@@ -23,10 +23,13 @@ public:
 		float speed_start = 0.2,
 			  speed_turn = 0.2,
 			  acceleration = 0.05;
-		float speed_max = 1;
+		float speed_max = 10000;
+
+		int acceleration_current = 40000;
 
 		bool brake_reverse_enabled = false;
 		float brake_reverse_current = 10000;
+		int brake_current = 40000;
 	} param;
 
 	struct State {

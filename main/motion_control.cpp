@@ -37,6 +37,10 @@ MotionControl::MotionControl(Vesc& _m_l, Vesc& _m_r) :
 	m_r.onValues([&](Vesc& m) {
 			events.set(MotorValues_Right);
 		});
+
+	m_l.setBrakeCurrent(param.brake_current);
+	m_r.setBrakeCurrent(param.brake_current);
+
 	Task::start();
 }
 
@@ -166,9 +170,7 @@ void MotionControl::run()
 
 float MotionControl::convert_speed(float v)
 {
-	if (v > 1.0)
-		v = 1.0;
-	return v * param.speed_max;
+	return clip(v, -1, 1) * param.speed_max;
 }
 
 void MotionControl::go_l(float v)
@@ -177,7 +179,7 @@ void MotionControl::go_l(float v)
 	if (v == 0)
 		m_l.setCurrent(0);
 	else
-		m_l.setDuty(-convert_speed(v));
+		m_l.setRPM(convert_speed(v));
 }
 
 void MotionControl::go_r(float v)
@@ -186,7 +188,7 @@ void MotionControl::go_r(float v)
 	if (v == 0)
 		m_r.setCurrent(0);
 	else
-		m_r.setDuty(-convert_speed(v));
+		m_r.setRPM(convert_speed(v));
 }
 
 void MotionControl::go(bool reverse)
@@ -197,10 +199,23 @@ void MotionControl::go(bool reverse)
 	if (state.braking)
 		return;
 
-	int sign = reverse ? 1 : -1;
+	int dir = reverse ? 1 : -1;
 
-	state.speed = param.speed_start * sign;
-	state.moving = true;
+	float current_speed = ((m_l.data.rpm + m_r.data.rpm) / 2) / param.speed_max;
+	if (fabs(current_speed) > 0.1) {
+		if (dir == sign(current_speed)) {
+			state.speed = current_speed;
+			state.moving = true;
+		}
+		else if (dir == -sign(current_speed)) {
+			state.braking = true;
+			state.moving = false;
+		}
+	}
+	else {
+		state.speed = param.speed_start * dir;
+		state.moving = true;
+	}
 	update(std::move(lock), true);
 }
 
@@ -241,6 +256,7 @@ void MotionControl::reset_accel_unlocked()
 	state.speed = 0;
 	state.d_speed = 0;
 	state.accelerating = false;
+	state.braking = false;
 }
 
 void MotionControl::idle()
@@ -263,7 +279,6 @@ void MotionControl::set_brake(bool on)
 		//m_r.setBrakeCurrent(20000);
 	}
 	else {
-		state.braking = false;
 		idle_unlocked();
 	}
 	update(std::move(lock), true);

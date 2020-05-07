@@ -3,18 +3,130 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "lwip/err.h"
-#include "lwip/sockets.h"
+#include "lwip/api.h"
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
-
-#define TAG "mc_monitor"
+#include "websocket_server.h"
 
 #include "motion_control_monitor.hpp"
 
-MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
-	Task(TAG, 8*1024, 5),
+static HttpServer *srv = nullptr;
+
+void websocket_callback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len)
+{
+	if (srv)
+		srv->ws_callback(num, type, msg, len);
+}
+
+HttpServer::HttpServer(MotionControlMonitor& _mc, uint16_t port) :
+	Task("http_server", 8*1024, 5),
 	mc(_mc),
-	port(_port)
+	client_queue(xQueueCreate(CLIENT_QUEUE_SIZE, sizeof(struct netconn*)))
+{
+	srv_conn = netconn_new(NETCONN_TCP);
+	netconn_bind(srv_conn, NULL, port);
+
+	srv = this;
+	Task::start();
+}
+
+void HttpServer::run()
+{
+	struct netconn *newconn;
+	static err_t err;
+
+	netconn_listen(srv_conn);
+	ESP_LOGI(TAG, "server listening");
+	do {
+		err = netconn_accept(srv_conn, &newconn);
+		ESP_LOGI(TAG,"new client");
+		if(err == ERR_OK) {
+			//xQueueSendToBack(client_queue, &newconn, portMAX_DELAY);
+			serve(newconn);
+		}
+	} while(err == ERR_OK);
+	netconn_close(srv_conn);
+	netconn_delete(srv_conn);
+}
+
+void HttpServer::serve(struct netconn *conn)
+{
+	const static char HTML_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
+	const static char ERROR_HEADER[] = "HTTP/1.1 404 Not Found\nContent-type: text/html\n\n";
+	const static char JS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/javascript\n\n";
+	const static char CSS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
+	//const static char PNG_HEADER[] = "HTTP/1.1 200 OK\nContent-type: image/png\n\n";
+	const static char ICO_HEADER[] = "HTTP/1.1 200 OK\nContent-type: image/x-icon\n\n";
+	//const static char PDF_HEADER[] = "HTTP/1.1 200 OK\nContent-type: application/pdf\n\n";
+	//const static char EVENT_HEADER[] = "HTTP/1.1 200 OK\nContent-Type: text/event-stream\nCache-Control: no-cache\nretry: 3000\n\n";
+	struct netbuf* inbuf;
+	static char* buf;
+	static uint16_t buflen;
+	static err_t err;
+	netconn_set_recvtimeout(conn, 1000); // allow a connection timeout of 1 second
+	ESP_LOGI(TAG, "reading from client...");
+	err = netconn_recv(conn, &inbuf);
+	ESP_LOGI(TAG, "read from client");
+	if (err != ERR_OK) {
+		goto cleanup_inbuf;
+	}
+	netbuf_data(inbuf, (void**)&buf, &buflen);
+	if (!buf)
+		return;
+
+	if (buf) {
+		// default page websocket
+		if(strstr(buf,"GET / ")
+				&& strstr(buf,"Upgrade: websocket")) {
+			ESP_LOGI(TAG,"Requesting websocket on /");
+			ws_server_add_client(conn, buf, buflen, const_cast<char *>("/"), websocket_callback);
+		}
+	}
+cleanup_inbuf:
+	netbuf_delete(inbuf);
+}
+
+
+void HttpServer::ws_callback(uint8_t num, WEBSOCKET_TYPE_t type, char* msg, uint64_t len)
+{
+	switch (type) {
+		case WEBSOCKET_CONNECT:
+			ESP_LOGI(TAG, "client %i connected!", num);
+			mc.events.set(MotionControlMonitor::Event::ClientConnected);
+			break;
+		case WEBSOCKET_DISCONNECT_EXTERNAL:
+			ESP_LOGI(TAG, "client %i sent a disconnect message", num);
+			mc.events.set(MotionControlMonitor::Event::ClientDisconnected);
+			break;
+		case WEBSOCKET_DISCONNECT_INTERNAL:
+			ESP_LOGI(TAG, "client %i was disconnected", num);
+			mc.events.set(MotionControlMonitor::Event::ClientDisconnected);
+			break;
+		case WEBSOCKET_DISCONNECT_ERROR:
+			ESP_LOGI(TAG, "client %i was disconnected due to an error", num);
+			mc.events.set(MotionControlMonitor::Event::ClientDisconnected);
+			break;
+		case WEBSOCKET_TEXT:
+			if (len) { // if the message length was greater than zero
+				ESP_LOGI(TAG, "client %i sent %llu bytes: %s", num, len, msg);
+			}
+			break;
+		case WEBSOCKET_BIN:
+			ESP_LOGI(TAG, "client %i sent binary message of size %i:\n%s", num, (uint32_t)len, msg);
+			break;
+		case WEBSOCKET_PING:
+			ESP_LOGI(TAG, "client %i pinged us with message of size %i:\n%s", num, (uint32_t)len, msg);
+			break;
+		case WEBSOCKET_PONG:
+			ESP_LOGI(TAG, "client %i responded to the ping", num);
+			break;
+	}
+}
+
+MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
+	Task(TAG, 8*1024, 10),
+	http_server(*this, _port),
+	mc(_mc)
 {
 	mc.on_state_update([this]() {
 				events.set(Event::StateUpdate);
@@ -24,72 +136,12 @@ MotionControlMonitor::MotionControlMonitor(MotionControl& _mc, uint16_t _port) :
 				events.set(Event::MotorValues);
 			});
 
+	ws_server_start();
+
 	Task::start();
 }
 
 void MotionControlMonitor::run() {
-	char addr_str[128];
-	struct sockaddr_in6 dest_addr;
-
-	struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-	dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-	dest_addr_ip4->sin_family = AF_INET;
-	dest_addr_ip4->sin_port = htons(port);
-
-	int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-	if (listen_sock < 0) {
-		ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-		vTaskDelete(NULL);
-		return;
-	}
-	int opt = 1;
-	setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-	ESP_LOGI(TAG, "Socket created");
-
-	int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-	if (err != 0) {
-		ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-		goto CLEAN_UP;
-	}
-	ESP_LOGI(TAG, "Socket bound, port %d", port);
-
-	err = listen(listen_sock, 1);
-	if (err != 0) {
-		ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
-		goto CLEAN_UP;
-	}
-
-	while (1) {
-		ESP_LOGI(TAG, "Socket listening");
-
-		struct sockaddr_in6 source_addr; // Large enough for both IPv4 or IPv6
-		uint addr_len = sizeof(source_addr);
-		int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-		if (sock < 0) {
-			ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);
-			break;
-		}
-
-		// Convert ip address to string
-		if (source_addr.sin6_family == PF_INET) {
-			inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-		}
-		ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
-
-		do_send(sock);
-
-		shutdown(sock, 0);
-		close(sock);
-	}
-
-CLEAN_UP:
-	close(listen_sock);
-	vTaskDelete(NULL);
-}
-
-void MotionControlMonitor::do_send(int sock)
-{
 	const TickType_t timeout = 1000 / portTICK_PERIOD_MS;
 	static const std::string keepalive = R"(
 	{
@@ -97,23 +149,34 @@ void MotionControlMonitor::do_send(int sock)
 	}
 	)"_json.dump();
 
+	int num_clients = 0;
 	try {
 		while (1) {
-			Event ev = events.wait(Event::Any, timeout);
+			Event wait_mask = Event(Event::ClientConnected | Event::ClientDisconnected);
+			if (num_clients)
+				wait_mask = Event(wait_mask | Event::StateUpdate | Event::MotorValues);
+			Event ev = events.wait(wait_mask, timeout, true, false);
 
+			if (ev & Event::ClientConnected) {
+				num_clients++;
+			}
+			if (ev & Event::ClientDisconnected) {
+				num_clients--;
+			}
 			if (ev & Event::StateUpdate) {
 				json msg = {
-					{"type", "state"},
-					{"data", mc.get_state()}
+					{"type", "mc_state"},
+					{"data", mc.get_state()},
 				};
-				send(sock, msg.dump());
+				ws_send(msg.dump());
 			}
 			if (ev & Event::MotorValues) {
-				send_motor(sock, "left", mc.get_motor_values(Left));
-				send_motor(sock, "right", mc.get_motor_values(Right));
-			}
-			else {
-				send(sock, keepalive);
+				json msg = {
+					{"type", "motor_state"},
+					{"left", mc.get_motor_values(Left)},
+					{"right", mc.get_motor_values(Right)},
+				};
+				ws_send(msg.dump());
 			}
 		}
 	}
@@ -122,28 +185,10 @@ void MotionControlMonitor::do_send(int sock)
 	}
 }
 
-void MotionControlMonitor::send(int sock, const std::string& str)
+void MotionControlMonitor::ws_send(const std::string& str)
 {
-	const char *buf = str.c_str();
-	int to_write = str.length();
-	while (to_write > 0) {
-		int ret = ::send(sock, buf, to_write, 0);
-		if (ret < 0)
-			throw std::runtime_error("Error during send()");
-		buf += ret;
-		to_write -= ret;
+	int clients = ws_server_send_text_all(const_cast<char *>(str.c_str()), str.length());
+	if (clients > 0) {
+		ESP_LOGD(TAG, "sent to %d clients", clients);
 	}
-	int ret = ::send(sock, "\n", 1, 0);
-	if (ret < 0)
-		throw std::runtime_error("Error during send()");
-}
-
-void MotionControlMonitor::send_motor(int sock, const char *id, const Vesc::vescData& data)
-{
-	json msg = {
-		{"type", "motor"},
-		{"id", id},
-		{"data", data}
-	};
-	send(sock, msg.dump());
 }

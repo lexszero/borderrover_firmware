@@ -4,7 +4,7 @@ idf_component_register(
 	REQUIRES 
 		spi_flash nvs_flash
 		cxx_utils
-		sys_console wifi ota_server vesc r1
+		sys_console wifi ota_server vesc r1 websocket
 	)
 
 set_source_files_properties(

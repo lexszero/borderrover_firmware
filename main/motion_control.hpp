@@ -27,7 +27,7 @@ public:
 
 		int acceleration_current = 40000;
 
-		bool brake_reverse_enabled = false;
+		bool brake_reverse_enabled = true;
 		float brake_reverse_current = 10000;
 		int brake_current = 40000;
 	} param;

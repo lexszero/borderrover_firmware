@@ -191,6 +191,12 @@ void MotionControl::go_r(float v)
 		m_r.setRPM(convert_speed(v));
 }
 
+/*
+void MotionControl::maintain_speed() {
+
+}
+*/
+
 void MotionControl::go(bool reverse)
 {
 	ESP_LOGI(TAG, "go %s", reverse ? "backward" : "forward");
@@ -225,9 +231,14 @@ void MotionControl::turn_left()
 	auto lock = get_state_lock();
 	if (state.braking)
 		return;
-	state.omega = -param.speed_turn;
-	state.d_omega = -param.acceleration;
+
+	float current_speed = ((m_l.data.rpm + m_r.data.rpm) / 2) / param.speed_max;
+	if (fabs(current_speed) > 0.1) {
+		state.speed = current_speed;
+	}
+	state.omega = param.speed_turn;
 	state.moving = true;
+
 	update(std::move(lock), true);
 }
 
@@ -237,9 +248,14 @@ void MotionControl::turn_right()
 	auto lock = get_state_lock();
 	if (state.braking)
 		return;
-	state.omega = param.speed_turn;
-	state.d_omega = param.acceleration;
+
+	float current_speed = ((m_l.data.rpm + m_r.data.rpm) / 2) / param.speed_max;
+	if (fabs(current_speed) > 0.1) {
+		state.speed = current_speed;
+	}
+	state.omega = -param.speed_turn;
 	state.moving = true;
+
 	update(std::move(lock), true);
 }
 
@@ -255,6 +271,8 @@ void MotionControl::reset_accel_unlocked()
 {
 	state.speed = 0;
 	state.d_speed = 0;
+	state.omega = 0;
+	state.d_omega = 0;
 	state.accelerating = false;
 	state.braking = false;
 }
@@ -297,6 +315,7 @@ void MotionControl::time_advance(state_lock& lock) {
 		return;
 
 	state.speed = clip(state.speed + state.d_speed, -1.0, 1.0);
+	state.omega = clip(state.omega + state.d_omega, -1.0, 1.0);
 }
 
 void MotionControl::state_notify() {
@@ -314,8 +333,15 @@ bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
 	bool changed = false;
 	if (state.braking) {
 		if (param.brake_reverse_enabled) {
-			m_l.setCurrent(-sign(state.throttle_l) * param.brake_reverse_current);
-			m_l.setCurrent(-sign(state.throttle_r) * param.brake_reverse_current);
+			float current_speed = ((m_l.data.rpm + m_r.data.rpm) / 2) / param.speed_max;
+			if (abs(current_speed) < 0.01) {
+				m_l.brake();
+				m_r.brake();
+			}
+			else {
+				m_l.setCurrent(-sign(current_speed) * param.brake_reverse_current);
+				m_r.setCurrent(-sign(current_speed) * param.brake_reverse_current);
+			}
 		}
 		else {
 			m_l.brake();
@@ -326,13 +352,24 @@ bool MotionControl::update(MotionControl::state_lock&& lock, bool notify) {
 	else {
 		if (state.accelerating) {
 			state.d_speed = param.acceleration * sign(state.speed);
+			state.d_omega = param.acceleration * sign(state.omega);
 		}
 		else {
 			state.d_speed = 0;
+			state.d_omega = 0;
 		}
 
 		v_l = state.speed;
 		v_r = state.speed;
+
+		if (state.omega != 0) {
+			float omega_abs = abs(state.omega);
+			int omega_sign = sign(state.omega);
+			if (omega_sign > 0)
+				v_r -= omega_abs;
+			else
+				v_l -= omega_abs;
+		}
 
 		if (v_l != state.throttle_l || v_r != state.throttle_r)
 			changed = true;
@@ -367,4 +404,6 @@ void MotionControl::reset_accel()
 
 void MotionControl::reset_turn()
 {
+	auto lock = get_state_lock();
+	reset_accel_unlocked();
 }

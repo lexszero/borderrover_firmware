@@ -1,0 +1,36 @@
+# Usage:
+#
+# Interactive shell:
+#   $ docker-compose run --rm sdk
+#
+# Build && flash && monitor
+#   $ ESPPORT=/dev/ttyUSB0 docker-compose run --rm build
+version: '3.8'
+services:
+  sdk:
+    image: espressif/idf:release-v4.4
+    environment:
+      - ESPPORT=${ESPPORT:-/dev/ttyUSB0}
+    volumes:
+      - ${PWD}:${PWD}
+    devices:
+      - ${ESPPORT:-/dev/ttyUSB0}
+    working_dir: ${PWD}
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    init: true
+
+  build:
+    image: espressif/idf:release-v4.4
+    environment:
+      - ESPPORT=${ESPPORT:-/dev/ttyUSB0}
+    volumes:
+      - ${PWD}:${PWD}
+    devices:
+      - ${ESPPORT:-/dev/ttyUSB0}
+    working_dir: ${PWD}
+    stdin_open: true
+    tty: true
+    command: /bin/bash -c "idf.py flash && idf.py monitor"
+    init: true

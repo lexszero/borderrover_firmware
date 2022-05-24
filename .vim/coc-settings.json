@@ -1,0 +1,21 @@
+{
+  "clangd.enabled": true,
+  "clangd.semanticHighlighting": true,
+  "clangd.arguments": [
+    "--compile-commands-dir=./build"
+  ],
+  "languageserver": {
+    "ccls": {
+      "command": "ccls",
+      "filetypes": ["c", "cpp", "objc", "objcpp"],
+      "rootPatterns": [".ccls", "compile_commands.json", ".vim/", ".git/", ".hg/"],
+      "initializationOptions": {
+        "compilationDatabaseDirectory": "./build",
+         "cache": {
+           "directory": "/tmp/ccls"
+         }
+       }
+    }
+  }
+}
+

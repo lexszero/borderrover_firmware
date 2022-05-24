@@ -1,0 +1,11 @@
+"let &l:makeprg="cd ".g:localvimrc_script_dir_unresolved.";  && idf.py monitor"
+"let g:neogdb_attach_remote_str = g:localvimrc_script_dir_unresolved.'/build/BorderRover.elf /dev/ttyUSB0'
+
+command! IdfRun split termopen("idf.py -b 921600 app-flash")
+
+packadd termdebug
+function s:idf_gdb() abort
+	execute 'Termdebug ./build/BorderRover.elf /dev/ttyUSB0'
+endfunction
+
+command! IdfGdb call s:idf_gdb()

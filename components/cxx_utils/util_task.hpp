@@ -4,6 +4,7 @@
 #include <thread>
 #include <esp_pthread.h>
 #include <esp_log.h>
+#include <freertos/task.h>
 
 class Task {
 	public:
@@ -17,7 +18,7 @@ class Task {
 		}
 
 		void start() {
-			ESP_LOGI("TASK", "%s: starting %s", pcTaskGetTaskName(nullptr), cfg.thread_name);
+			ESP_LOGI("TASK", "%s: starting %s", pcTaskGetName(nullptr), cfg.thread_name);
 			esp_pthread_set_cfg(&cfg);
 			task = std::thread([this]() { run(); });
 			running = true;
@@ -28,17 +29,18 @@ class Task {
 			ss << "core id: " << xPortGetCoreID()
 				<< ", prio: " << uxTaskPriorityGet(nullptr)
 				<< ", minimum free stack: " << uxTaskGetStackHighWaterMark(nullptr) << " bytes.";
-			ESP_LOGI(pcTaskGetTaskName(nullptr), "%s", ss.str().c_str());
+			ESP_LOGI(pcTaskGetName(nullptr), "%s", ss.str().c_str());
 		}
-
+/*
 	TaskHandle_t get_handle() {
 		pthread_t thr = (task.native_handle());
 		return esp_pthread_get_handle(thr);
 	}
+*/
 
 	protected:
 		virtual void run() {
-			ESP_LOGI(pcTaskGetTaskName(nullptr), "FIXME: no overload, sleeping...");
+			ESP_LOGI(pcTaskGetName(nullptr), "FIXME: no overload, sleeping...");
 			while (1) {
 				vTaskDelay(1000 / portTICK_PERIOD_MS);
 			}

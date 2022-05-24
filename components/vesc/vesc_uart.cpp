@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "driver/uart.h"
+#include "soc/uart_periph.h"
 
 #include "vesc.hpp"
 #include "crc.h"
@@ -25,7 +26,9 @@ VescUartInterface::VescUartInterface(const char *name, uart_port_t _uart_port) :
 		.data_bits = UART_DATA_8_BITS,
 		.parity = UART_PARITY_DISABLE,
 		.stop_bits = UART_STOP_BITS_1,
-		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+		.flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+		.rx_flow_ctrl_thresh = 0,
+		.source_clk = UART_SCLK_APB,
 	};
 	
 	ESP_LOGI(TAG, "Initializing UART %d", uart_port);
@@ -39,7 +42,7 @@ VescUartInterface::VescUartInterface(const char *name, uart_port_t _uart_port) :
 void VescUartInterface::run() {
 	uart_event_t event;
 	while (1) {
-		if (!xQueueReceive(uart_queue, (void *)&event, (portTickType)portMAX_DELAY))
+		if (!xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY))
 			continue;
 		
 		switch (event.type) {

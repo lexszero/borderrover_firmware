@@ -11,7 +11,7 @@ set_source_files_properties(
 	app.cpp
 	motion_control.cpp
 	motion_control_monitor.cpp
-	PROPERTIES COMPILE_FLAGS -std=c++17)
+	PROPERTIES COMPILE_FLAGS -std=gnu++17)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 #add_subdirectory(nlohmann_json)

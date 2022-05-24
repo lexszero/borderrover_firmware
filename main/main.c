@@ -6,6 +6,7 @@
 */
 #include "common.h"
 
+#include "esp_netif.h"
 #include "esp_spi_flash.h"
 #include "driver/gpio.h"
 #include "nvs_flash.h"

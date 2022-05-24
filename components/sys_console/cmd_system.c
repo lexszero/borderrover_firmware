@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include "esp_log.h"
 #include "esp_console.h"
+#include "esp_chip_info.h"
 #include "esp_system.h"
 #include "esp_sleep.h"
 #include "esp_spi_flash.h"

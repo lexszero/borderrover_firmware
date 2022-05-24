@@ -42,9 +42,11 @@ static const char *TAG="cmd_wifi";
 static EventGroupHandle_t wifi_event_group = NULL;
 const int CONNECTED_BIT = BIT0;
 const int DISCONNECTED_BIT = BIT1;
+static esp_netif_t *netif_sta = NULL;
+static esp_netif_t *netif_ap = NULL;
 
 
-static ip4_addr_t s_ip_addr;
+static esp_ip4_addr_t s_ip_addr;
 static char s_ssid[32];
 
 static void on_scan_done(void* arg, esp_event_base_t event_base,
@@ -120,7 +122,10 @@ esp_err_t wifi_init(void)
 
 	wifi_event_group = xEventGroupCreate();
 
-	esp_netif_create_default_wifi_sta();
+	netif_sta = esp_netif_create_default_wifi_sta();
+	assert(netif_sta);
+	netif_ap = esp_netif_create_default_wifi_ap();
+	assert(netif_ap);
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -161,13 +166,13 @@ static bool wifi_cmd_sta_join(const char* ssid, const char* pass)
 		reconnect = false;
 		xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
 		ESP_ERROR_CHECK( esp_wifi_disconnect() );
-		xEventGroupWaitBits(wifi_event_group, DISCONNECTED_BIT, 0, 1, portTICK_RATE_MS);
+		xEventGroupWaitBits(wifi_event_group, DISCONNECTED_BIT, 0, 1, portTICK_PERIOD_MS);
 	}
 
 	reconnect = true;
 	wifi_connect(&wifi_config);
 
-	xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 5000/portTICK_RATE_MS);
+	xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 5000/portTICK_PERIOD_MS);
 
 	return true;
 }
@@ -289,22 +294,22 @@ static int wifi_cmd_query(int argc, char** argv)
 static uint32_t wifi_get_local_ip(void)
 {
 	int bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 0);
-	tcpip_adapter_if_t ifx = TCPIP_ADAPTER_IF_AP;
-	tcpip_adapter_ip_info_t ip_info;
+	esp_netif_t *ifx = netif_ap;
+	esp_netif_ip_info_t ip_info;
 	wifi_mode_t mode;
 
 	esp_wifi_get_mode(&mode);
 	if (WIFI_MODE_STA == mode) {
 		bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 0);
 		if (bits & CONNECTED_BIT) {
-			ifx = TCPIP_ADAPTER_IF_STA;
+			ifx = netif_sta;
 		} else {
 			ESP_LOGE(TAG, "sta has no IP");
 			return 0;
 		}
 	}
 
-	tcpip_adapter_get_ip_info(ifx, &ip_info);
+	esp_netif_get_ip_info(ifx, &ip_info);
 	return ip_info.ip.addr;
 }
 

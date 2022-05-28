@@ -25,17 +25,11 @@ int app_cmd_handler(int argc, char **argv) {
 	return 0;
 }
 
-Application::Application() {};
-
-Application::controller::controller() :
-	left_iface("esc_l", UART_NUM_1),
-	right_iface("esc_r", UART_NUM_2),
-	left(left_iface),
-	right(right_iface),
-	mc(left, right),
-	monitor(mc, 8042)
+Application::Application() :
+	body()
 {}
 
+/*
 void Application::tcpBridgeStart() {
 	ESP_LOGI(TAG, "Starting TCP bridge mode");
 	wifi_wait_for_ip();
@@ -57,17 +51,6 @@ void Application::btRemoteStart() {
 	esp_r1_keyboard_register_callback(Application::btRemoteKeyCb);
 	esp_r1_pointer_register_callback(Application::btRemotePointerCb);
 	esp_r1_device_event_register_callback(Application::btRemoteDeviceEventCb);
-
-	const esp_console_cmd_t cmd = {
-		.command = "go",
-		.help = "Drive around",
-		.hint = NULL,
-		.func = app_cmd_handler,
-		.argtable = &app_cmd_args,
-	};
-	app_cmd_args.dir = arg_str0(NULL, NULL, "<direction>", "Direction to go (fwd, back, left, right)");
-	app_cmd_args.end = arg_end(1);
-	ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
 
 	control_mode = CONTROL_MODE_BT_REMOTE;
 };
@@ -129,28 +112,8 @@ void Application::btRemoteDeviceEventCb(enum esp_r1_device_event_e event) {
 	if (event == R1_EVENT_DISCONNECTED)
 		app->ctrl->mc.idle();
 }
-
-void Application::handleCmd(app_cmd_t *args) {
-	const char *dir = args->dir->sval[0];
-	if (strcmp(dir, "fwd") == 0) {
-		app->ctrl->mc.go(false);
-	}
-	else if (strcmp(dir, "l") == 0) {
-		app->ctrl->mc.turn_left();
-	}
-	else if (strcmp(dir, "r") == 0) {
-		app->ctrl->mc.turn_right();
-	}
-	else if (strcmp(dir, "idle") == 0) {
-		app->ctrl->mc.idle();
-	}
-	else if (strcmp(dir, "state") == 0) {
-		app->ctrl->mc.get_state().print();
-	}
-}
+*/
 
 extern "C" void app_start() {
 	app = new Application();
-	app->btRemoteStart();
-	//app->tcpBridgeStart();
 }

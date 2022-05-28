@@ -53,9 +53,6 @@ void app_main() {
 
 	ota_server_init();
 
-	uart_init(UART_NUM_1, GPIO_NUM_19, GPIO_NUM_18);
-	uart_init(UART_NUM_2, GPIO_NUM_17, GPIO_NUM_16);
-
 	app_start();
 
 	ui_set_led_mode(UI_LED_IDLE);

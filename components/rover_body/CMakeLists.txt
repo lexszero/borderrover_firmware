@@ -1,12 +1,10 @@
 idf_component_register(
 	SRC_DIRS "."
 	INCLUDE_DIRS "."
-	REQUIRES 
-		spi_flash nvs_flash
-		wifi ota_server
-		rover_body
+	REQUIRES cxx_utils nlohmann_json sys_console
 	)
 
 set_source_files_properties(
-	app.cpp
+	body_control.cpp
+	body_control_console.cpp
 	PROPERTIES COMPILE_FLAGS -std=gnu++17)

@@ -1,5 +1,6 @@
-#include "common.h"
+#include "uart_tcp_server.h"
 
+#include "esp_log.h"
 #include "esp_vfs.h"
 #include "esp_vfs_dev.h"
 
@@ -8,7 +9,7 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
-#include "uart_tcp_server.h"
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 static int uart_tcp_handler(uart_tcp_server_t *srv, int sock) {
 	const char *TAG = srv->name;

@@ -7,22 +7,6 @@
 #include "websocket_server.h"
 
 class MotionControlMonitor;
-/*
-class HttpWorker :
-	private Task
-{
-	public:
-		HttpWorker(MotionControlMonitor& mc);
-
-	protected:
-		void run() override;
-
-	private:
-		static constexpr char TAG[] = "http_server";
-
-		MotionControlMonitor& mc;
-};
-*/
 
 class HttpServer :
 	private Task

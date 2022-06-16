@@ -6,16 +6,17 @@
 #define __unused __attribute__((unused))
 #endif
 
+#include <array>
+#include <chrono>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
-#include <sstream>
-#include <array>
-#include <cstring>
-#include <vector>
 #include <numeric>
-#include <tuple>
 #include <optional>
+#include <sstream>
+#include <tuple>
 #include <type_traits>
+#include <vector>
 
 template <typename... T>
 constexpr auto make_array(T&&... values) ->
@@ -195,3 +196,5 @@ std::string to_string(const T& value)
 	os << value;
 	return os.str();
 }
+
+std::string formatBytes(size_t bytes);

@@ -5,11 +5,13 @@
 #include <string>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
+#include "esp_log.h"
+
+#include "core_control_types.hpp"
 #include "util_task.hpp"
 #include "util_event.hpp"
-#include "esp_log.h"
-#include "utils.hpp"
 #include "util_lockable.hpp"
+#include "util_misc.hpp"
 
 #include "nlohmann/json.hpp"
 using nlohmann::json;
@@ -163,6 +165,7 @@ class BodyControl :
 
 		static BodyControl& instance();
 
+		Core::ControlSwitch lockout;
 	private:
 		using time_point = std::chrono::time_point<system_clock>;
 		using duration = std::chrono::duration<system_clock>;

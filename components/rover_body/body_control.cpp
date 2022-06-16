@@ -10,14 +10,14 @@ std::shared_ptr<BodyControl> BodyControl::singleton_instance = nullptr;
 
 OutputGPIO BodyControl::State::outs[] = {
 //    Name		GPIO			active_low	open_drain
-	{"Lockout",	GPIO_NUM_23,	true,		true},
-	{"Valve0",	GPIO_NUM_5,		false,		false},
-	{"Valve1",	GPIO_NUM_17,	false,		false},
-	{"Valve2",	GPIO_NUM_16,	false,		false},
-	{"Pump",	GPIO_NUM_4,		false,		false},
-	{"Igniter",	GPIO_NUM_19,	true,		true},	
-	{"Aux0",	GPIO_NUM_22,	true,		true},
-	{"Aux1",	GPIO_NUM_18,	true,		true},
+	{"lockout",	GPIO_NUM_23,	true,		true},
+	{"valve0",	GPIO_NUM_5,		false,		false},
+	{"valve1",	GPIO_NUM_17,	false,		false},
+	{"valve2",	GPIO_NUM_16,	false,		false},
+	{"pump",	GPIO_NUM_4,		false,		false},
+	{"igniter",	GPIO_NUM_19,	true,		true},	
+	{"aux0",	GPIO_NUM_22,	true,		true},
+	{"aux1",	GPIO_NUM_18,	true,		true},
 };
 
 OutputId from_string(const std::string& s)
@@ -70,6 +70,11 @@ void BodyControl::State::print() const
 BodyControl::BodyControl() :
 	Task::Task(TAG, 8*1024, 15),
 	Lockable(TAG),
+	lockout("lockout", "Safety lockout", 10, false,
+		[this](bool val) {
+			set_output(Lockout, val);
+		}),
+
 	state()
 {
 	singleton_instance = std::shared_ptr<BodyControl>(this);

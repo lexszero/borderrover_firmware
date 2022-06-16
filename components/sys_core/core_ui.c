@@ -1,7 +1,7 @@
-#include "common.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "driver/gpio.h"
-#include "ui.h"
+#include "core_ui.h"
 
 #define LED_GPIO GPIO_NUM_2
 
@@ -13,14 +13,14 @@ static esp_timer_handle_t led_timer;
 
 static inline void led_off()
 {
-	ESP_LOGI(TAG, "led off");
+	ESP_LOGD(TAG, "led off");
 	led_state = false;
 	gpio_set_level(LED_GPIO, 0);
 }
 
 static inline void led_on()
 {
-	ESP_LOGI(TAG, "led on");
+	ESP_LOGD(TAG, "led on");
 	led_state = true;
 	gpio_set_level(LED_GPIO, 1);
 }

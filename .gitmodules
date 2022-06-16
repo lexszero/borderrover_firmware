@@ -10,3 +10,12 @@
 [submodule "components/websocket"]
 	path = components/websocket
 	url = https://github.com/Molorius/esp32-websocket.git
+[submodule "components/neopixelbus/NeoPixelBus"]
+	path = components/neopixelbus/NeoPixelBus
+	url = https://github.com/Makuna/NeoPixelBus/
+[submodule "components/leds/WS2812FX"]
+	path = components/leds/WS2812FX
+	url = https://github.com/kitesurfer1404/WS2812FX.git
+[submodule "components/leds/NeoPixelBus"]
+	path = components/leds/NeoPixelBus
+	url = https://github.com/Makuna/NeoPixelBus

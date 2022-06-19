@@ -1,13 +1,15 @@
 #pragma once
 
+#include "gpio_io.hpp"
+
 #include <chrono>
 #include <shared_mutex>
 #include <string>
-#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
 
 #include "core_control_types.hpp"
+#include "esp_timer_cxx.hpp"
 #include "util_task.hpp"
 #include "util_event.hpp"
 #include "util_lockable.hpp"
@@ -17,12 +19,13 @@
 using nlohmann::json;
 
 using namespace std::literals;
-using std::chrono::system_clock;
 using std::chrono::milliseconds;
+using Clock = std::chrono::system_clock;
+using duration = milliseconds;
+using time_point = std::chrono::time_point<Clock, milliseconds>;
 
 enum OutputId
 {
-	Lockout,
 	Valve0,
 	Valve1,
 	Valve2,
@@ -30,91 +33,53 @@ enum OutputId
 	Igniter,
 	Aux0,
 	Aux1,
-	_Count
+	Lockout,
+	_TotalCount,
+	_PulsedCount = 7
 };
 
 OutputId from_string(const std::string& s);
 
-class InputGPIO
+class PulsedOutput :
+	private Lockable<std::shared_mutex>
 {
 	public:
-		InputGPIO(const char* name, gpio_num_t gpio, bool active_low = false) :
-			name(name),
-			gpio(gpio),
-			active_low(active_low)
-		{
-			ESP_LOGD(name, "init input %s, gpio %d, active_low %d", name, gpio, active_low);
-			gpio_pad_select_gpio(gpio);
-			gpio_set_direction(gpio, GPIO_MODE_INPUT);
-		}
+		PulsedOutput() = delete;
+		PulsedOutput(OutputGPIO& gpio, int order,
+				duration min_pulse_length = 10ms,
+				duration max_pulse_length = 10*1000ms,
+				duration min_pause_length = 100ms,
+				duration default_pulse_length = 100ms);
 
-		bool get() const
-		{
-			return gpio_get_level(gpio) ^ static_cast<int>(active_low);
-		}
-		
-		const char* name;
+		void reset();
+		bool get();
+		void set(bool state);
 
-	protected:
-		gpio_num_t gpio;
-		bool active_low;
-};
+		friend std::ostream& operator<<(std::ostream& os, const PulsedOutput& out);
 
-class OutputGPIO : public InputGPIO
-{
-	public:
-		OutputGPIO(const char* name, gpio_num_t gpio, bool active_low = false, bool open_drain = false) :
-			InputGPIO(name, gpio, active_low)
-		{
-			ESP_LOGD(name, "init output %s, gpio %d, active_low %d", name, gpio, active_low);
-			gpio_pad_select_gpio(gpio);
-			if (open_drain) {
-				gpio_set_direction(gpio, GPIO_MODE_INPUT_OUTPUT_OD);
-				gpio_set_pull_mode(gpio, GPIO_PULLUP_ONLY);
-				gpio_pullup_en(gpio);
-			}
-			else {
-				gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
-			}
-			set(false);
-		}
-
-		void on()
-		{
-			set(true);
-		}
-
-		void off()
-		{
-			set(false);
-		}
-
-		inline void set(bool state)
-		{
-			ESP_LOGI(name, ": set output %s=%d", name, state);
-			gpio_set_level(gpio, state ^ static_cast<int>(active_low));
-		}
-};
-
-class PulsedOutput : public OutputGPIO
-{
-	public:
-		PulsedOutput(const char* name, gpio_num_t gpio, bool active_low,
-				TickType_t min_pulse_length = 1, TickType_t max_pulse_length = 0) :
-			OutputGPIO(name, gpio, active_low),
-			min_pulse_length(min_pulse_length),
-			max_pulse_length(max_pulse_length),
-			t_last_on(0), t_last_off(1),
-			t_pulse_end(0)
-		{}
-
-		void pulse(TickType_t length);
-		void tick();
-	
 	private:
-		const TickType_t min_pulse_length, max_pulse_length;
-		TickType_t t_last_on, t_last_off ;
-		TickType_t t_pulse_end;
+		using unique_lock = Lockable::unique_lock;
+		std::string name;
+
+		OutputGPIO& gpio;
+
+		const duration min_pulse_length, max_pulse_length, min_pause_length, default_pulse_length;
+		time_point t_last_on, t_last_off;
+
+		idf::esp_timer::ESPTimer timer_single;
+		idf::esp_timer::ESPTimer timer_periodic;
+
+		void reset(const unique_lock& lock);
+		void pulse_single(const unique_lock& lock, const duration& length);
+		void pulse_periodic(const unique_lock& lock, const duration& length, const duration& period);
+
+		duration relative_pulse_length(uint32_t percent);
+
+	public:
+		Core::ControlRange<uint32_t, 100> t_on;
+		Core::ControlRange<uint32_t, 100> period;
+		Core::ControlPushButton trigger_single;
+		Core::ControlSwitch enable;
 };
 
 class BodyControl :
@@ -135,46 +100,52 @@ class BodyControl :
 
 		struct State
 		{
+			using Outputs = std::array<PulsedOutput, static_cast<size_t>(OutputId::_PulsedCount)>;
+
 			State();
 
-			std::chrono::time_point<system_clock> timestamp;
+			time_point timestamp;
 			Mode mode;
 
-			static OutputGPIO outs[static_cast<size_t>(OutputId::_Count)];
+			static std::array<OutputGPIO, static_cast<size_t>(OutputId::_TotalCount)> gpios;
+
+			OutputGPIO& lockout;
+			Outputs outs;
 
 			void print() const;
 			json as_json() const;
+
+			OutputGPIO& get_gpio(OutputId output);
+			PulsedOutput& get_output(OutputId output);
+			OutputId get_output_id(const std::string& name);
 		};
 
 		using CallbackFn = std::function<void()>;
 		void on_state_update(CallbackFn cb);
 
 		enum Event {
-			StateUpdate = (1 << 8),
+			StateUpdate = (1 << 0),
 
 			Any = 0xff,
 		};
 		const EventGroup<Event>& get_events();
 
 		void reset();
+		OutputId get_output_id(const std::string& name);
 		void set_output(OutputId output, bool on);
 		void get_output(OutputId output) const;
-		void pulse_output(OutputId output, uint32_t length_ms);
+		void pulse_output(OutputId output, uint8_t length_percent);
 		void test_outputs();
+		const State& get_state() const;
 		void print_state() const;
 
 		static BodyControl& instance();
 
 		Core::ControlSwitch lockout;
 	private:
-		using time_point = std::chrono::time_point<system_clock>;
-		using duration = std::chrono::duration<system_clock>;
-
-		static constexpr auto PULSE_LEN_MIN = 10ms;
-		static constexpr auto PULSE_LEN_MAX = 30*1000ms;
 		static constexpr auto WAIT_TIMEOUT = 10ms;
 
-		State state;
+		std::unique_ptr<State> state;
 		CallbackFn state_update_callback;
 
 		EventGroup<Event> events;

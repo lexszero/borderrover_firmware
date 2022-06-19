@@ -35,7 +35,11 @@ public:
 		return value;
 	}
 
-	virtual void append_json(json& j) {
+	virtual std::string show() override {
+		return to_string();
+	}
+
+	virtual void append_json(json& j) override {
 		j[name] = value;
 	}
 
@@ -60,9 +64,14 @@ public:
 	using GenericControl<Type>::operator Type&;
 	using GenericControl<Type>::set;
 
-	virtual std::string to_string() {
+	virtual std::string to_string() override {
 		return ::to_string(this->value);
 	}
+
+	virtual std::string show() override {
+		return to_string();
+	}
+
 };
 
 class ControlSwitch : public Control<bool> {
@@ -73,15 +82,20 @@ class ControlSwitch : public Control<bool> {
 	}
 */
 
-	void from_string(const std::string& newval) {
+	void from_string(const std::string& newval) override {
 		Control<bool>::set(newval == "1" ? true : false);
 	}
+
+	virtual std::string show() override {
+		return "sw:" + std::string(this->value ? "\e[1;32mON\e[0m" : "\e[1;31mOFF\e[0m");
+	}
+
 };
 
 class ControlPushButton : public Control<bool> {
 public:
 	explicit ControlPushButton(const std::string& _name, const char *_desc, int _order, Setter _setter = nullptr) :
-		Control(_name, _desc, _order, true, _setter)
+		Control(_name, _desc, _order, false, _setter)
 	{}
 
 	/*
@@ -90,8 +104,12 @@ public:
 	}
 	*/
 
-	void from_string(const std::string& newval) {
+	void from_string(const std::string& newval) override {
 		Control<bool>::set(std::stoi(newval), false);
+	}
+
+	virtual std::string show() override {
+		return "btn:" + std::string(this->value ? "\e[1;32mON\e[0m" : "\e[1;31mOFF\e[0m");
 	}
 };
 
@@ -108,8 +126,12 @@ public:
 	}
 	*/
 
-	void from_string(const std::string& newval) {
+	void from_string(const std::string& newval) override {
 		Control<Type>::set(std::stoi(newval));
+	}
+	
+	std::string show() override {
+		return ::to_string(this->value) + " [max: " + ::to_string(Max) + "]";
 	}
 };
 

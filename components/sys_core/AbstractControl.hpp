@@ -17,6 +17,7 @@ public:
 
 	virtual std::string to_string() = 0;
 	virtual void from_string(const std::string& newval) = 0;
+	virtual std::string show() = 0;
 
 	/*
 	virtual void to_mqtt(char *buf);

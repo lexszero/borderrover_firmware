@@ -98,6 +98,7 @@ HTTPServer::HTTPServer(const char *base_path)
 	on("/api/v1/system/info", HTTP_GET, system_info_get_handler);
 
 	/* URI handler for getting web server files */
+#if 0
 	httpd_uri_t common_get_uri = {
 		.uri = "/*",
 		.method = HTTP_GET,
@@ -105,6 +106,7 @@ HTTPServer::HTTPServer(const char *base_path)
 		.user_ctx = context.get(),
 	};
 	httpd_register_uri_handler(server, &common_get_uri);
+#endif
 	srv_ctx = std::move(context);
 }
 

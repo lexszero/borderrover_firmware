@@ -7,6 +7,8 @@
 
 namespace Core {
 
+using namespace std::string_literals;
+
 static const char *TAG = "controls";
 
 std::unique_ptr<Controls> controls;
@@ -55,12 +57,11 @@ int handle_cmd_ctl(int argc, char **argv)
 Controls::Controls()
 {
 	register_console_cmd();
-	http->on("/api/v1/control/_all", HTTP_GET, [this](httpd_req_t *req) {
-		json j;
-		for (const auto& item : controls) {
-			item.second->append_json(j);
-		}
-		return httpd_resp_json(req, j);
+	http->on(std::string(URL_PREFIX) + "*", HTTP_GET, [this](httpd_req_t *req) {
+		return http_get_handler(req);
+	});
+	http->on(std::string(URL_PREFIX) + "*", HTTP_POST, [this](httpd_req_t *req) {
+		return http_post_handler(req);
 	});
 }
 
@@ -88,8 +89,9 @@ void Controls::show()
 {
 	for (const auto& item : controls) {
 		const auto& [name, ctl] = item;
-		std::cout << std::setfill(' ') << std::setw(10) << name << " : "
-			<< ctl->to_string() << std::endl;
+		std::cout << std::setfill(' ') << std::setw(4) << ctl->order
+			<< std::setfill(' ') << std::setw(15) << name << " : "
+			<< ctl->show() << std::endl;
 	}
 	std::cout << std::endl;
 
@@ -98,6 +100,71 @@ void Controls::show()
 void Controls::set(const char *name, const char *value)
 {
 	controls[name]->from_string(value);
+}
+
+esp_err_t Controls::http_get_handler(httpd_req_t *req)
+{
+	auto path = req->uri + strlen(URL_PREFIX);
+	try {
+		if (strncmp(path, "_all", 4) == 0) {
+			json j;
+			for (const auto& item : controls) {
+				item.second->append_json(j);
+			}
+			return httpd_resp_json(req, j);
+		}
+		else {
+			auto& ctl = *controls[path];
+			ESP_LOGD(REST_TAG, "Found control %s", ctl.name);
+	
+			auto ret = httpd_resp_set_type(req, "text/plain");
+			if (ret != ESP_OK) {
+				ESP_LOGE(REST_TAG, "Failed to set response type");
+				return ret;
+			}
+			return httpd_resp_sendstr(req, ctl.to_string().c_str());
+		}
+	}
+	catch (const std::exception& e)
+	{
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, e.what());
+	}
+
+	return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Shit happened");
+}
+
+esp_err_t Controls::http_post_handler(httpd_req_t *req)
+{
+	auto path = req->uri + strlen(URL_PREFIX);
+	try {
+		auto& ctl = *controls[path];
+		ESP_LOGD(REST_TAG, "Found control %s", ctl.name);
+
+		if (ctl.readonly)
+			return httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Readonly control");
+
+		char buf[16];
+		auto ret = httpd_req_recv(req, buf, sizeof(buf)-1);
+		if (ret <= 0)
+			return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request");
+		buf[ret] = 0;
+
+		ctl.from_string(buf);
+		return httpd_resp_sendstr(req, ctl.to_string().c_str());
+	}
+	catch (const std::exception& e)
+	{
+		return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, e.what());
+	}
+
+	return httpd_resp_send_err(req, HTTPD_501_METHOD_NOT_IMPLEMENTED, "Not implemented");
+}
+
+AbstractControl& Controls::from_request(httpd_req_t *req)
+{
+	auto path = req->uri + strlen(URL_PREFIX);
+	ESP_LOGD(TAG, "path=%s", path);
+	return *controls[path];
 }
 
 }

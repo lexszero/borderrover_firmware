@@ -19,28 +19,6 @@ AbstractControl::AbstractControl(const std::string& _name, const char *_desc, bo
 	mqttPath(std::string("/devices/") + config.hostname + std::string("/controls/") + std::string(_name.c_str()))
 {
 	controls->add(_name, std::shared_ptr<AbstractControl>(this));
-
-	http->on("/api/v1/control/"s + name, HTTP_GET, [this](httpd_req_t *req) {
-		auto ret = httpd_resp_set_type(req, "text/plain");
-		if (ret != ESP_OK) {
-			ESP_LOGE(REST_TAG, "Failed to set response type");
-			return ret;
-		}
-		return httpd_resp_sendstr(req, this->to_string().c_str());
-	});
-
-	if (!readonly) {
-		http->on("/api/v1/control/"s + name, HTTP_POST, [this](httpd_req_t *req) {
-			char buf[16];
-			auto ret = httpd_req_recv(req, buf, sizeof(buf)-1);
-			if (ret <= 0)
-				return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad request");
-			buf[ret] = 0;
-
-			this->from_string(buf);
-			return httpd_resp_sendstr(req, this->to_string().c_str());
-		});
-	}
 }
 
 /*

@@ -39,10 +39,6 @@ public:
 		return to_string();
 	}
 
-	virtual void append_json(json& j) override {
-		j[name] = value;
-	}
-
 	virtual void set(const Type& newval, bool publish = true, bool call = true) {
 		if (call && setter)
 			setter(newval);
@@ -65,13 +61,17 @@ public:
 	using GenericControl<Type>::set;
 
 	virtual std::string to_string() override {
-		return ::to_string(this->value);
+		using std::to_string;
+		return to_string(this->value);
 	}
 
 	virtual std::string show() override {
 		return to_string();
 	}
 
+	virtual void append_json(json& j) override {
+		j[GenericControl<Type>::name] = this->value;
+	}
 };
 
 class ControlSwitch : public Control<bool> {
@@ -131,7 +131,7 @@ public:
 	}
 	
 	std::string show() override {
-		return ::to_string(this->value) + " [max: " + ::to_string(Max) + "]";
+		return std::to_string(this->value) + " [max: " + std::to_string(Max) + "]";
 	}
 };
 

@@ -30,31 +30,56 @@ inline uint32_t convert_color(const RgbColor& color) {
 		(static_cast<uint32_t>(color.B) << 0);
 }
 
+RgbColor parse_color(const std::string& str)
+{
+	auto pos1 = str.find(';');
+	if (pos1 == std::string::npos)
+		throw std::invalid_argument("Bad RGB value format");
+	auto pos2 = str.find(';', pos1);
+	if (pos2 == std::string::npos)
+		throw std::invalid_argument("Bad RGB value format");
+	RgbColor c;
+	c.R = std::stoi(str.substr(0, pos1));
+	c.G = std::stoi(str.substr(pos1+1, pos2));
+	c.B = std::stoi(str.substr(pos2+1));
+	return c;
+}
+
 }  // namespace
+
+std::string to_string(const RgbColor& c)
+{
+	using std::to_string;
+	return to_string(c.R) + ";" + to_string(c.G) + ";" + to_string(c.B);
+}
+
+void to_json(json& j, const RgbColor& color)
+{
+	j = Leds::to_string(color);
+}
+
+std::ostream& operator<<(std::ostream& os, const RgbColor& color)
+{
+	os << Leds::to_string(color);
+	return os;
+}
 
 void ControlRGB::from_string(const std::string& newval)
 {
-	RgbColor c;
-	auto pos1 = newval.find(';');
-	if (pos1 == std::string::npos)
-		throw std::invalid_argument("Bad RGB value format");
-	auto pos2 = newval.find(';', pos1);
-	if (pos2 == std::string::npos)
-		throw std::invalid_argument("Bad RGB value format");
-	c.R = std::stoi(newval.substr(0, pos1));
-	c.G = std::stoi(newval.substr(pos1+1, pos2));
-	c.B = std::stoi(newval.substr(pos2+1));
-	GenericControl<RgbColor>::set(c);
+	GenericControl<RgbColor>::set(parse_color(newval));
 }
 
 std::string ControlRGB::to_string()
 {
-	auto v = this->value;
-	using ::to_string;
-	return to_string(v.R) + ";" + to_string(v.G) + ";" + to_string(v.B);
+	return Leds::to_string(this->value);
 }
 
-Segment::Segment(Output& _output, const std::string&& prefix, uint8_t _id) :
+void ControlRGB::append_json(json& j)
+{
+	j[name] = to_string();
+}
+
+Segment::Segment(Output& _output, const std::string& prefix, uint8_t _id, uint16_t start, uint16_t stop, bool reverse) :
 	output(_output),
 	id(_id),
 	mode(prefix + "_mode", "Animation mode", (id+1)*10+1,
@@ -78,13 +103,19 @@ Segment::Segment(Output& _output, const std::string&& prefix, uint8_t _id) :
 	colors {
 		ControlRGB(prefix + "_color1", "Color 1",  (id+1)*10+3,
 				RgbColor{255, 0, 0},
-				std::bind(&Output::set_color, output, id, 0, _1)),
+				[this](const RgbColor& c) {
+					output.set_color(id, 0, c);
+				}),
 		ControlRGB(prefix + "_color2", "Color 2", (id+1)*10+4,
 				RgbColor{0, 255, 0},
-				std::bind(&Output::set_color, output, id, 1, _1)),
+				[this](const RgbColor& c) {
+					output.set_color(id, 1, c);
+				}),
 		ControlRGB(prefix + "_color3", "Color 3", (id+1)*10+5,
 				RgbColor{0, 0, 255},
-				std::bind(&Output::set_color, output, id, 2, _1))
+				[this](const RgbColor& c) {
+					output.set_color(id, 2, c);
+				}),
 	},
 	next(prefix + "_next", "Next mode", (id+1)*10+6,
 			[this](bool val) {
@@ -98,9 +129,20 @@ Segment::Segment(Output& _output, const std::string&& prefix, uint8_t _id) :
 				auto m = output.leds.getMode(id);
 				mode = m == 0 ? MODE_COUNT : m - 1;
 			})
-{}
+{
+	ESP_LOGI(TAG, "New segment: id %d, start %d, stop %d, reverse %d",
+			id, start, stop, reverse);
+	output.leds.addActiveSegment(id);
+	output.leds.setSegment(id,  start, stop,
+			mode,
+			convert_color(colors[0]),
+			convert_speed(speed), reverse);
+	output.leds.setColor(id, 1, convert_color(colors[1]));
+	output.leds.setColor(id, 2, convert_color(colors[2]));
+}
 
 Output::Output(uint16_t num_leds, uint8_t pin, neoPixelType type) :
+	Task(TAG, 8*1024, 10),
 	leds(num_leds, pin, type),
 	artnet("artnet", "ArtNet enabled", 5, true,
 		[](bool val) {
@@ -114,7 +156,7 @@ Output::Output(uint16_t num_leds, uint8_t pin, neoPixelType type) :
 		[this](bool val) {
 			ESP_LOGI(TAG, "sync = %d", val);
 			sync_segments(0, [this](Segment& seg) {
-				const auto& src = segments[0];
+				const auto& src = segments.front();
 				seg.mode = src.mode;
 				seg.speed = src.speed;
 				for (uint8_t i = 0; i < MAX_NUM_COLORS; i++) {
@@ -127,7 +169,31 @@ Output::Output(uint16_t num_leds, uint8_t pin, neoPixelType type) :
 			leds.trigger();
 		})
 {
+	ESP_LOGI(TAG, "New output: pin %d, %d leds", pin, num_leds);
+	leds.init();
 }
+
+void Output::start()
+{
+	leds.start();
+	Task::start();
+}
+
+void Output::run()
+{
+	while (1) {
+		leds.service();
+		vTaskDelay(10 / portTICK_PERIOD_MS);
+	}
+}
+
+/*
+Segment& Output::add_segment(const std::string& prefix, uint16_t start, uint16_t stop)
+{
+	uint8_t id = segments.size();
+	return segments.emplace_back(*this, prefix, id, start, stop, false);
+}
+*/
 
 void Output::sync_segments(uint8_t seg, std::function<void(Segment&)> func)
 {

@@ -61,7 +61,7 @@ inline unsigned long millis() {
     return (tv.tv_sec * 1000L) + (tv.tv_usec / 1000L);
 }
 
-long map(long x, long in_min, long in_max, long out_min, long out_max) {
+inline long map(long x, long in_min, long in_max, long out_min, long out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 

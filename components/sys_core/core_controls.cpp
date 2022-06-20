@@ -34,22 +34,28 @@ int handle_cmd_ctl(int argc, char **argv)
 	}
 
 	const char *action = cmd_ctl_args.action->sval[0];
-	if (strcmp(action, "show") == 0) {
-		controls->show();
-	}
-	else if (strcmp(action, "set") == 0) {
-		if (!cmd_ctl_args.ctl->count) {
-			ESP_LOGE(TAG, "Control name missing");
-			return 1;
+	try {
+		if (strcmp(action, "show") == 0) {
+			controls->show();
 		}
-		if (!cmd_ctl_args.value->count) {
-			ESP_LOGE(TAG, "Value missing");
-			return 1;
+		else if (strcmp(action, "set") == 0) {
+			if (!cmd_ctl_args.ctl->count) {
+				ESP_LOGE(TAG, "Control name missing");
+				return 1;
+			}
+			if (!cmd_ctl_args.value->count) {
+				ESP_LOGE(TAG, "Value missing");
+				return 1;
+			}
+			controls->set(cmd_ctl_args.ctl->sval[0], cmd_ctl_args.value->sval[0]);
 		}
-		controls->set(cmd_ctl_args.ctl->sval[0], cmd_ctl_args.value->sval[0]);
+		else {
+			ESP_LOGD(TAG, "Invalid action");
+		}
 	}
-	else {
-		ESP_LOGD(TAG, "Invalid action");
+	catch (const std::exception& e) {
+		ESP_LOGE(TAG, "%s", e.what());
+		return 1;
 	}
 	return 0;
 }
@@ -99,7 +105,7 @@ void Controls::show()
 
 void Controls::set(const char *name, const char *value)
 {
-	controls[name]->from_string(value);
+	controls.at(name)->from_string(value);
 }
 
 esp_err_t Controls::http_get_handler(httpd_req_t *req)
@@ -114,7 +120,7 @@ esp_err_t Controls::http_get_handler(httpd_req_t *req)
 			return httpd_resp_json(req, j);
 		}
 		else {
-			auto& ctl = *controls[path];
+			auto& ctl = *controls.at(path);
 			ESP_LOGD(REST_TAG, "Found control %s", ctl.name);
 	
 			auto ret = httpd_resp_set_type(req, "text/plain");
@@ -137,7 +143,7 @@ esp_err_t Controls::http_post_handler(httpd_req_t *req)
 {
 	auto path = req->uri + strlen(URL_PREFIX);
 	try {
-		auto& ctl = *controls[path];
+		auto& ctl = *controls.at(path);
 		ESP_LOGD(REST_TAG, "Found control %s", ctl.name);
 
 		if (ctl.readonly)

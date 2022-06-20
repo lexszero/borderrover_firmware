@@ -3,7 +3,7 @@
 #include "driver/gpio.h"
 #include "core_ui.h"
 
-#define LED_GPIO GPIO_NUM_2
+#define LED_GPIO GPIO_NUM_27
 
 static const char *TAG = "ui";
 
@@ -43,12 +43,12 @@ static void led_timer_callback(void *arg)
 	switch (led_mode) {
 		case UI_LED_OFFLINE:
 			led_toggle();
-			led_timer_reset(300);
+			led_timer_reset(200);
 			break;
 
 		case UI_LED_IDLE:
 			led_toggle();
-			led_timer_reset(1000);
+			led_timer_reset(500);
 			break;
 
 		case UI_LED_OTA:

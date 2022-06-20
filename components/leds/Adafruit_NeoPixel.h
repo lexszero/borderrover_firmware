@@ -74,7 +74,7 @@ const T1 constrain(const T1& x, const T2& a, const T3& b) {
 
 // typedef NeoPixelBus configuration
 typedef NeoGrbwFeature COLOR_FEATURE;
-typedef NeoPixelBrightnessBus<COLOR_FEATURE, Neo800KbpsMethod> NPB_IMPL;
+typedef NeoPixelBrightnessBus<COLOR_FEATURE, NeoEsp32Rmt0800KbpsMethod> NPB_IMPL;
 
 // Adafruit_NeoPixel compatibility layer
 // https://github.com/adafruit/Adafruit_NeoPixel

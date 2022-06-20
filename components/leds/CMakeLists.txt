@@ -1,26 +1,30 @@
 idf_component_register(
 	SRCS leds.cpp
-        "NeoPixelBus/src/internal/HsbColor.cpp"
-        "NeoPixelBus/src/internal/HslColor.cpp"
-        "NeoPixelBus/src/internal/HtmlColor.cpp"
-        "NeoPixelBus/src/internal/HtmlColorNames.cpp"
-        "NeoPixelBus/src/internal/HtmlColorNameStrings.cpp"
-        "NeoPixelBus/src/internal/HtmlColorShortNames.cpp"
-        "NeoPixelBus/src/internal/NeoEsp32RmtMethod.cpp"
-        "NeoPixelBus/src/internal/NeoGamma.cpp"
-        "NeoPixelBus/src/internal/NeoPixelAnimator.cpp"
-        "NeoPixelBus/src/internal/Rgb48Color.cpp"
-        "NeoPixelBus/src/internal/RgbColor.cpp"
-        "NeoPixelBus/src/internal/RgbColorBase.cpp"
-        "NeoPixelBus/src/internal/RgbwColor.cpp"
-        "NeoPixelBus/src/internal/SegmentDigit.cpp"
+		"Adafruit_NeoPixel.cpp"
+		"NeoPixelBus/src/internal/HsbColor.cpp"
+		"NeoPixelBus/src/internal/HslColor.cpp"
+		"NeoPixelBus/src/internal/HtmlColor.cpp"
+		"NeoPixelBus/src/internal/HtmlColorNames.cpp"
+		"NeoPixelBus/src/internal/HtmlColorNameStrings.cpp"
+		"NeoPixelBus/src/internal/HtmlColorShortNames.cpp"
+		"NeoPixelBus/src/internal/NeoEsp32RmtMethod.cpp"
+		"NeoPixelBus/src/internal/NeoGamma.cpp"
+		"NeoPixelBus/src/internal/NeoPixelAnimator.cpp"
+		"NeoPixelBus/src/internal/Rgb48Color.cpp"
+		"NeoPixelBus/src/internal/RgbColor.cpp"
+		"NeoPixelBus/src/internal/RgbColorBase.cpp"
+		"NeoPixelBus/src/internal/RgbwColor.cpp"
+		"NeoPixelBus/src/internal/SegmentDigit.cpp"
 		"WS2812FX/src/WS2812FX.cpp"
+		"WS2812FX/src/modes.cpp"
+		"WS2812FX/src/modes_funcs.cpp"
+	SRC_DIRS . WS2812FX/src
 	INCLUDE_DIRS . WS2812FX/src
 	REQUIRES cxx_utils sys_core
 	)
 
 target_compile_definitions(${COMPONENT_TARGET} PRIVATE 
-    "-DARDUINO_ARCH_ESP32"
+	"-DARDUINO_ARCH_ESP32"
 	)
 
 set_source_files_properties(

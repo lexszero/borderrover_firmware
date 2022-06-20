@@ -125,7 +125,11 @@ void HTTPServer::on(
 		.handler = handler,
 	};
 	r->uri.user_ctx = r;
-	ESP_LOGI(REST_TAG, "Registering handler for %s", r->uri.uri);
+	ESP_LOGI(REST_TAG, "Route %s %s",
+			(r->uri.method == HTTP_GET) ? "GET"
+			: (r->uri.method == HTTP_POST) ? "POST"
+			: "",
+			r->uri.uri);
 	httpd_register_uri_handler(server, &r->uri);
 }
 

@@ -1,6 +1,8 @@
-#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
-
 #include "body_control.hpp"
+
+#include "core_ui.h"
+
+#include "driver/gpio.h"
 
 #include <thread>
 #include <tuple>
@@ -61,50 +63,54 @@ std::ostream& operator<<(std::ostream& os, const PulsedOutput& out)
 PulsedOutput::PulsedOutput(OutputGPIO& gpio, int order,
 		duration min_pulse_length,
 		duration max_pulse_length,
-		duration min_pause_length,
-		duration default_pulse_length) :
+		duration min_pause_length) :
 	Lockable(gpio.name),
 	name(gpio.name),
 	gpio(gpio),
 	min_pulse_length(min_pulse_length),
 	max_pulse_length(max_pulse_length),
 	min_pause_length(min_pause_length),
-	default_pulse_length(default_pulse_length),
 	t_last_on(), t_last_off(),
 	timer_single([this](void) {
-				reset();
+				auto lock = take_unique_lock();
+				reset(lock);
+				running_single = false;
 			}, name + "_single"),
 	timer_periodic([this](void) {
 				if (enable)
 					trigger_single.set(true);
 			}, name + "_periodic"),
-	t_on(name + "_t_on", "On time, x100ms", order + 1, 10,
+	running_single(false),
+	t_on(name + "_t_on", "On time, x10ms", order + 1, 10,
 			[this](const uint32_t val) {
-				ESP_LOGD(name.c_str(), "Set pulse on time %d", val);
+				ESP_LOGI(name.c_str(), "Set pulse on time %d", val);
 			}),
-	period(name + "_period", "Pulse period, x100ms", order + 2, 0,
+	period(name + "_period", "Pulse period, x10ms", order + 2, 0,
 			[this](const uint32_t val) {
-				ESP_LOGD(name.c_str(), "Set pulse repetition period %d", val);
+				ESP_LOGI(name.c_str(), "Set pulse repetition period %d", val);
 			}),
 	trigger_single(name + "_trigger", "Trigger single pulse", order + 3,
 			[this](const bool val) {
 				auto lock = take_unique_lock();
 				if (val)
-					pulse_single(lock, relative_pulse_length(t_on));
+					pulse_single(lock, milliseconds(static_cast<uint32_t>(t_on)*10));
 			}),
 	enable(name + "_enable", "Enable output or pulsing if period>0", order + 4, false,
 			[this](const bool val) {
 				set(val);
 			})
-{}
+{
+	ESP_LOGI(name.c_str(), "PulsedOutput: min_pulse=%lldms, max_pulse=%lldms, min_pause=%lldms",
+			min_pulse_length.count(),
+			max_pulse_length.count(),
+			min_pause_length.count());
+}
 
 void PulsedOutput::reset()
 {
 	auto lock = take_unique_lock();
-	try {
-		timer_periodic.stop();
-	}
-	catch (...) {};
+	reset_periodic(lock);
+	reset_single(lock);
 	reset(lock);
 }
 
@@ -120,24 +126,27 @@ void PulsedOutput::set(bool new_state)
 
 	auto now = time_point_cast<duration>(Clock::now());
 
-	try {
-		timer_single.stop();
-	}
-	catch (...) {};
+	reset_single(lock);
 
 	if (new_state) {
 		if (period) {
 			pulse_periodic(lock,
-					milliseconds(static_cast<uint32_t>(t_on) * 100),
-					milliseconds(static_cast<uint32_t>(period) * 100));
+					milliseconds(static_cast<uint32_t>(t_on) * 10),
+					milliseconds(static_cast<uint32_t>(period) * 10));
+			running_periodic = true;
 		}
 		else {
 			gpio.set(new_state);
 			t_last_on = now;
-			timer_single.start(duration_cast<microseconds>(max_pulse_length));
+			if (max_pulse_length.count()) {
+				timer_single.start(duration_cast<microseconds>(max_pulse_length));
+				running_single = true;
+			}
 		}
 	}
 	else {
+		reset_periodic(lock);
+		reset_single(lock);
 		reset(lock);
 	}
 }
@@ -150,23 +159,41 @@ void PulsedOutput::reset(const PulsedOutput::unique_lock& lock)
 	t_last_off = time_point_cast<duration>(Clock::now());
 }
 
+void PulsedOutput::reset_single(const unique_lock& lock)
+{
+	(void)lock;
+
+	if (running_single)
+		timer_single.stop();
+	running_single = false;
+}
+
+void PulsedOutput::reset_periodic(const unique_lock& lock)
+{
+	(void)lock;
+
+	if (running_periodic)
+		timer_periodic.stop();
+	running_periodic = false;
+}
+
 void PulsedOutput::pulse_single(const PulsedOutput::unique_lock& lock, const duration& length)
 {
 	duration t_on = length;
 	if (t_on < min_pulse_length)
 		t_on = min_pulse_length;
-	else if (length > max_pulse_length)
+	else if (max_pulse_length.count() && (t_on > max_pulse_length))
 		t_on = max_pulse_length;
 
-	ESP_LOGD(gpio.name, "pulse_single %lldms", t_on.count());
+	ESP_LOGI(name.c_str(), "pulse_single %lldms", t_on.count());
+
+	reset_single(lock);
 
 	gpio.set(true);
 	t_last_on = time_point_cast<duration>(Clock::now());
-	try {
-		timer_single.stop();
-	}
-	catch (...) {};
+	
 	timer_single.start(std::chrono::duration_cast<microseconds>(t_on));
+	running_single = true;
 }
 
 void PulsedOutput::pulse_periodic(const PulsedOutput::unique_lock& lock, const duration& length, const duration& period)
@@ -175,17 +202,14 @@ void PulsedOutput::pulse_periodic(const PulsedOutput::unique_lock& lock, const d
 	duration t_repeat = period;
 	if (t_on < min_pulse_length)
 		t_on = min_pulse_length;
-	else if (t_on > max_pulse_length)
+	else if (max_pulse_length.count() && (t_on > max_pulse_length))
 		t_on = max_pulse_length;
 	if (t_repeat < t_on + min_pause_length)
 		t_repeat = t_on + min_pause_length;
 
-	ESP_LOGD(gpio.name, "pulse_periodic t_on=%lldms, t_repeat=%lldms", t_on.count(), t_repeat.count());
+	ESP_LOGI(name.c_str(), "pulse_periodic t_on=%lldms, t_repeat=%lldms", t_on.count(), t_repeat.count());
 	pulse_single(lock, t_on);
-	try {
-		timer_periodic.stop();
-	}
-	catch (...) {};
+	reset_periodic(lock);
 	timer_periodic.start_periodic(duration_cast<microseconds>(t_repeat));
 }
 
@@ -194,35 +218,34 @@ duration PulsedOutput::relative_pulse_length(uint32_t percent)
 	return duration_cast<duration>(min_pulse_length + (max_pulse_length - min_pulse_length) * static_cast<double>(percent) / 100.0);
 }
 
-BodyControl::State::State() :
+BodyControl::State::State(BodyControl& bc) :
 	timestamp(time_point_cast<duration>(Clock::now())),
 	mode(Mode::Disabled),
 	lockout(gpios[to_underlying(OutputId::Lockout)]),
-	outs {
-		PulsedOutput {gpios[0], 100},
-		PulsedOutput {gpios[1], 110},
-		PulsedOutput {gpios[2], 120},
-		PulsedOutput {gpios[3], 130},
-		PulsedOutput {gpios[4], 140},
-		PulsedOutput {gpios[5], 150},
-		PulsedOutput {gpios[6], 160}
+	outs {			//	GPIO			start_id	min_pulse	max_pulse	min_pause
+		PulsedOutput {	gpios[Valve0],	10,			50ms,		10s},
+		PulsedOutput {	gpios[Valve1],	20,			50ms,		10s},
+		PulsedOutput {	gpios[Valve2],	30,			50ms,		10s},
+		PulsedOutput {	gpios[Pump],	40,			200ms,		5s},
+		PulsedOutput {	gpios[Igniter],	50,			300ms,		0ms},
+		PulsedOutput {	gpios[Aux0],	60,			100ms,		5s},
+		PulsedOutput {	gpios[Aux1],	70,			20ms,		0ms}
 	}
 {
-//	for (auto i = 0; i < OutputId::_PulsedCount; i++) {
-//		outs.emplace_back(gpios[i], 100 + i*10, 10ms, 30*1000ms, 100ms, 100ms);
-//	}
-
 	ESP_LOGI(TAG, "resetting outputs");
 	lockout.set(false);
 	for (auto& gpio : gpios) {
 		gpio.set(false);
+		gpio.on_change([&bc](bool new_state) {
+				bc.notify();
+			});
 	}
 }
 
 void BodyControl::State::print() const
 {
 	std::cout << "\n\nTime: " << timestamp << ", mode " << mode <<
-		"\nLockout: " << lockout <<
+		"\n" << lockout <<
 		"\nOutputs: \n";
 	for (const auto& out : outs) {
 		std::cout << out << std::endl;
@@ -257,9 +280,14 @@ BodyControl::BodyControl() :
 		[this](bool val) {
 			set_output(Lockout, val);
 		}),
-	state(std::make_unique<State>())
+	state(std::make_unique<State>(*this)),
+	state_update_callback(nullptr),
+	leds(std::make_unique<Leds::Output>(32*8, GPIO_NUM_13, 0))
 {
 	singleton_instance = std::shared_ptr<BodyControl>(this);
+	leds->leds.setNumSegments(1);
+	leds->segments.emplace_back(*leds, "led", 0, 0, 32*8);
+	leds->start();
 	Task::start();
 	register_console_cmd();
 }
@@ -277,7 +305,7 @@ OutputId BodyControl::get_output_id(const std::string& name)
 void BodyControl::reset()
 {
 	auto lock = take_unique_lock();
-	state = std::make_unique<State>();
+	state = std::make_unique<State>(*this);
 	notify();
 }
 
@@ -291,7 +319,6 @@ void BodyControl::set_output(OutputId id, bool on)
 		auto& out = state->outs[to_underlying(id)];
 		out.enable.set(on);
 	}
-	notify();
 }
 
 void BodyControl::pulse_output(OutputId id, uint8_t length)
@@ -302,7 +329,6 @@ void BodyControl::pulse_output(OutputId id, uint8_t length)
 	auto& out = state->outs[to_underlying(id)];
 	out.t_on.set(length);
 	out.trigger_single.set(true);
-	notify();
 }
 
 void BodyControl::test_outputs()
@@ -314,7 +340,6 @@ void BodyControl::test_outputs()
 	for (auto& out : state->outs) {
 		state->get_gpio(OutputId::Lockout).set(false);
 		out.set(true);
-		notify();
 
 		sleep_for(500ms);
 
@@ -335,6 +360,7 @@ void BodyControl::print_state() const
 void BodyControl::run()
 {
 	ESP_LOGI(TAG, "started");
+	ui_set_led_mode(UI_LED_IDLE);
 	while (1) {
 		auto event = events.wait(Event::Any, 1000 / portTICK_PERIOD_MS, true, false);
 		ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));

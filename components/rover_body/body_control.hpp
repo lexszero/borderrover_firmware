@@ -1,5 +1,7 @@
 #pragma once
 
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+
 #include "gpio_io.hpp"
 
 #include <chrono>
@@ -8,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
 
+#include "leds.hpp"
 #include "core_control_types.hpp"
 #include "esp_timer_cxx.hpp"
 #include "util_task.hpp"
@@ -48,8 +51,7 @@ class PulsedOutput :
 		PulsedOutput(OutputGPIO& gpio, int order,
 				duration min_pulse_length = 10ms,
 				duration max_pulse_length = 10*1000ms,
-				duration min_pause_length = 100ms,
-				duration default_pulse_length = 100ms);
+				duration min_pause_length = 100ms);
 
 		void reset();
 		bool get();
@@ -63,13 +65,17 @@ class PulsedOutput :
 
 		OutputGPIO& gpio;
 
-		const duration min_pulse_length, max_pulse_length, min_pause_length, default_pulse_length;
+		const duration min_pulse_length, max_pulse_length, min_pause_length;
 		time_point t_last_on, t_last_off;
 
 		idf::esp_timer::ESPTimer timer_single;
 		idf::esp_timer::ESPTimer timer_periodic;
+		bool running_single, running_periodic;
 
 		void reset(const unique_lock& lock);
+		void reset_single(const unique_lock& lock);
+		void reset_periodic(const unique_lock& lock);
+		void apply(const unique_lock& lock);
 		void pulse_single(const unique_lock& lock, const duration& length);
 		void pulse_periodic(const unique_lock& lock, const duration& length, const duration& period);
 
@@ -102,7 +108,7 @@ class BodyControl :
 		{
 			using Outputs = std::array<PulsedOutput, static_cast<size_t>(OutputId::_PulsedCount)>;
 
-			State();
+			State(BodyControl& bc);
 
 			time_point timestamp;
 			Mode mode;
@@ -142,22 +148,26 @@ class BodyControl :
 		static BodyControl& instance();
 
 		Core::ControlSwitch lockout;
+
 	private:
 		static constexpr auto WAIT_TIMEOUT = 10ms;
 
 		std::unique_ptr<State> state;
 		CallbackFn state_update_callback;
 
+		std::unique_ptr<Leds::Output> leds;
+
 		EventGroup<Event> events;
 
 		void run() override;
 		void notify();
-		void idle_unlocked();
 
 		void register_console_cmd();
 		void handle_console_cmd(int argc, char **argv);
 
 		static std::shared_ptr<BodyControl> singleton_instance;
+
+		friend class BodyControl::State;
 };
 
 void to_json(json& j, const BodyControl::State& state);

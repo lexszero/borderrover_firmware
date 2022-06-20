@@ -3,7 +3,12 @@ set(EXTRA_COMPONENT_DIRS $ENV{IDF_PATH}/examples/cxx/experimental/experimental_c
 idf_component_register(
 	SRC_DIRS "."
 	INCLUDE_DIRS "."
-	REQUIRES cxx_utils nlohmann_json sys_console sys_core experimental_cpp_component
+	REQUIRES
+		cxx_utils experimental_cpp_component
+		nlohmann_json
+		sys_console
+		sys_core
+		leds
 	)
 
 set_source_files_properties(

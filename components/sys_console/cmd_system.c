@@ -125,20 +125,69 @@ static void register_heap()
 
 static int tasks_info(int argc, char **argv)
 {
-	const size_t bytes_per_task = 40; /* see vTaskList description */
-	char *task_list_buffer = malloc(uxTaskGetNumberOfTasks() * bytes_per_task);
-	if (task_list_buffer == NULL) {
+	uint32_t total_time = 0;
+	size_t total_tasks = uxTaskGetNumberOfTasks();
+
+	TaskStatus_t *tasks = malloc(total_tasks * sizeof(TaskStatus_t));
+	if (tasks == NULL) {
 		ESP_LOGE(TAG, "failed to allocate buffer for vTaskList output");
 		return 1;
 	}
-	fputs("Task Name\tStatus\tPrio\tHWM\tTask#", stdout);
-#ifdef CONFIG_FREERTOS_VTASKLIST_INCLUDE_COREID
-	fputs("\tAffinity", stdout);
-#endif
-	fputs("\n", stdout);
-	vTaskList(task_list_buffer);
-	fputs(task_list_buffer, stdout);
-	free(task_list_buffer);
+
+	total_tasks = uxTaskGetSystemState(tasks, total_tasks, &total_time);
+
+	total_time /= 100;
+
+	printf("PID Name             Prio CPU S  HWM       RT%%\n");
+	printf("===============================================\n");
+	for (size_t i = 0; i < total_tasks; i++) {
+		const TaskStatus_t *task = &tasks[i];
+		char st;
+		char cpu;
+		switch (task->eCurrentState) {
+			case eRunning:
+				st = 'R';
+				break;
+
+			case eReady:
+				st = 'W';
+				break;
+
+			case eBlocked:
+				st = 'B';
+				break;
+
+			case eSuspended:
+				st = 'S';
+				break;
+
+			case eDeleted:
+				st = 'D';
+				break;
+
+			case eInvalid:
+			default:
+				st = '?';
+				break;
+		}
+
+		if (task->xCoreID == tskNO_AFFINITY)
+			cpu = '*';
+		else
+			cpu = '0' + task->xCoreID;
+
+		int rt_percent = task->ulRunTimeCounter / total_time;
+
+		printf("%3d %-16s %-4d  %c  %c  %-8d %3d%%\n",
+				task->xTaskNumber,
+				task->pcTaskName,
+				task->uxCurrentPriority,
+				cpu,
+				st,
+				task->usStackHighWaterMark,
+				rt_percent);
+	}
+	free(tasks);
 	return 0;
 }
 

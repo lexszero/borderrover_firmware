@@ -133,7 +133,6 @@ void PulsedOutput::set(bool new_state)
 			pulse_periodic(lock,
 					milliseconds(static_cast<uint32_t>(t_on) * 10),
 					milliseconds(static_cast<uint32_t>(period) * 10));
-			running_periodic = true;
 		}
 		else {
 			gpio.set(new_state);
@@ -163,8 +162,12 @@ void PulsedOutput::reset_single(const unique_lock& lock)
 {
 	(void)lock;
 
-	if (running_single)
-		timer_single.stop();
+	if (running_single) {
+		try {
+			timer_single.stop();
+		}
+		catch (...) {}
+	}
 	running_single = false;
 }
 
@@ -172,8 +175,12 @@ void PulsedOutput::reset_periodic(const unique_lock& lock)
 {
 	(void)lock;
 
-	if (running_periodic)
-		timer_periodic.stop();
+	if (running_periodic) {
+		try {
+			timer_periodic.stop();
+		}
+		catch (...) {}
+	}
 	running_periodic = false;
 }
 
@@ -211,6 +218,7 @@ void PulsedOutput::pulse_periodic(const PulsedOutput::unique_lock& lock, const d
 	pulse_single(lock, t_on);
 	reset_periodic(lock);
 	timer_periodic.start_periodic(duration_cast<microseconds>(t_repeat));
+	running_periodic = true;
 }
 
 duration PulsedOutput::relative_pulse_length(uint32_t percent)
@@ -228,8 +236,8 @@ BodyControl::State::State(BodyControl& bc) :
 		PulsedOutput {	gpios[Valve2],	30,			50ms,		10s},
 		PulsedOutput {	gpios[Pump],	40,			200ms,		5s},
 		PulsedOutput {	gpios[Igniter],	50,			300ms,		0ms},
-		PulsedOutput {	gpios[Aux0],	60,			100ms,		5s},
-		PulsedOutput {	gpios[Aux1],	70,			20ms,		0ms}
+		PulsedOutput {	gpios[Aux0],	60,			20ms,		0ms},
+		PulsedOutput {	gpios[Aux1],	70,			100ms,		5s}
 	}
 {
 	ESP_LOGI(TAG, "resetting outputs");

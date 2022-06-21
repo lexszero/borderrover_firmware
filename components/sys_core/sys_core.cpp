@@ -1,6 +1,6 @@
 #include "sys_core.hpp"
 #include "core_controls.hpp"
-#include "core_ui.h"
+#include "core_status_led.hpp"
 #include "utils.h"
 
 #include "ota_server.h"
@@ -22,7 +22,7 @@ void sys_console_register_commands() {
 }
 
 void ota_server_start_callback() {
-	ui_set_led_mode(UI_LED_OTA);
+	status_led->blink(200, 200, 3, 500);
 }
 
 esp_err_t fs_init() {
@@ -57,8 +57,11 @@ esp_err_t fs_init() {
 
 
 void init() {
-	ui_init();
-	ui_set_led_mode(UI_LED_OFFLINE);
+	status_led = std::make_unique<StatusLed>(
+		"led_status",
+		OutputGPIO("led_status", GPIO_NUM_27));
+
+	status_led->blink(200);
 
 	esp_err_t err = nvs_flash_init();
 	if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {

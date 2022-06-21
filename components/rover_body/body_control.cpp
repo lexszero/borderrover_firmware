@@ -1,7 +1,6 @@
 #include "body_control.hpp"
 
-#include "core_ui.h"
-
+#include "core_status_led.hpp"
 #include "driver/gpio.h"
 
 #include <thread>
@@ -47,7 +46,7 @@ std::ostream& operator<<(std::ostream &strm, const BodyControl::Mode &mode)
                 "UNKNOWN");
 }
 
-std::ostream& operator<<(std::ostream& os, const InputGPIO& gpio)
+std::ostream& Core::operator<<(std::ostream& os, const Core::InputGPIO& gpio)
 {
 	os << std::setfill(' ') << std::setw(10) << gpio.name << " : "
 			<< (gpio.get() ? "\e[1;33mON\e[0m" : "OFF");
@@ -368,11 +367,12 @@ void BodyControl::print_state() const
 void BodyControl::run()
 {
 	ESP_LOGI(TAG, "started");
-	ui_set_led_mode(UI_LED_IDLE);
+	Core::status_led->blink(500);
 	while (1) {
 		auto event = events.wait(Event::Any, 1000 / portTICK_PERIOD_MS, true, false);
 		ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));
 		if (event & Event::StateUpdate) {
+			Core::status_led->blink_once(50);
 			print_state();
 		}
 	}

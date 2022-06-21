@@ -4,7 +4,7 @@
 //#include "ota_server.h"
 #include "esp_console.h"
 #include "sys_core.hpp"
-#include "core_ui.h"
+#include "core_status_led.hpp"
 
 #define TAG "app"
 
@@ -123,5 +123,5 @@ extern "C" void app_start() {
 
 	app = new Application();
 
-	ui_set_led_mode(UI_LED_IDLE);
+	Core::status_led->blink(500);
 }

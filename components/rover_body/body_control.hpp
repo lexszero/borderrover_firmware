@@ -2,7 +2,7 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 
-#include "gpio_io.hpp"
+#include "core_gpio.hpp"
 
 #include <chrono>
 #include <shared_mutex>
@@ -21,6 +21,7 @@
 #include "nlohmann/json.hpp"
 using nlohmann::json;
 
+using Core::OutputGPIO;
 using namespace std::literals;
 using std::chrono::milliseconds;
 using Clock = std::chrono::system_clock;

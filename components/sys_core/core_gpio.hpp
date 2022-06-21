@@ -6,6 +6,8 @@
 #include <iostream>
 #include <functional>
 
+namespace Core {
+
 class InputGPIO
 {
 	public:
@@ -63,7 +65,7 @@ class OutputGPIO : public InputGPIO
 				gpio_pullup_en(gpio);
 			}
 			else {
-				gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+				gpio_set_direction(gpio, GPIO_MODE_INPUT_OUTPUT);
 			}
 			set(false);
 		}
@@ -80,8 +82,10 @@ class OutputGPIO : public InputGPIO
 
 		virtual void set(bool state)
 		{
-			ESP_LOGI(name, "set %d", state);
+			ESP_LOGD(name, "gpio set %d", state);
 			gpio_set_level(gpio, state ^ static_cast<int>(active_low));
 			notify();
 		}
 };
+
+}

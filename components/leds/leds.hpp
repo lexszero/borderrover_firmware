@@ -54,6 +54,12 @@ public:
 	ControlRange<uint8_t, 255> speed;
 	ControlRGB colors[3];
 	ControlPushButton next, prev;
+
+	void init();
+
+private:
+	const uint16_t start, stop;
+	const bool reverse;
 };
 
 class Output :
@@ -74,7 +80,7 @@ public:
 
 	void start();
 
-	Segment& add_segment(const std::string& prefix, uint16_t start, uint16_t stop);
+	Segment& add_segment(const std::string& prefix, uint16_t start, uint16_t stop, bool reverse = false);
 	void sync_segments(uint8_t seg, std::function<void(Segment&)> func);
 	void set_color(uint8_t seg, uint8_t n, const RgbColor& val);
 

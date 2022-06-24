@@ -2,6 +2,8 @@
 
 #include "esp_log.h"
 
+#include <chrono>
+
 namespace Leds {
 
 static const char *TAG = "leds";
@@ -128,9 +130,18 @@ Segment::Segment(Output& _output, const std::string& prefix, uint8_t _id, uint16
 				ESP_LOGI(TAG, "seg %d prev", id);
 				auto m = output.leds.getMode(id);
 				mode = m == 0 ? MODE_COUNT : m - 1;
-			})
+			}),
+	start(start),
+	stop(stop),
+	reverse(reverse)
 {
 	ESP_LOGI(TAG, "New segment: id %d, start %d, stop %d, reverse %d",
+			id, start, stop, reverse);
+}
+
+void Segment::init()
+{
+	ESP_LOGI(TAG, "Setting segment: id %d, start %d, stop %d, reverse %d",
 			id, start, stop, reverse);
 	output.leds.addActiveSegment(id);
 	output.leds.setSegment(id,  start, stop,
@@ -175,12 +186,18 @@ Output::Output(uint16_t num_leds, uint8_t pin, neoPixelType type) :
 
 void Output::start()
 {
-	leds.start();
 	Task::start();
 }
 
 void Output::run()
 {
+	using namespace std::chrono;
+
+	leds.setNumSegments(segments.size());
+	for (auto& seg : segments) {
+		seg.init();
+	}
+	leds.start();
 	while (1) {
 		leds.service();
 		vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -188,7 +205,7 @@ void Output::run()
 }
 
 /*
-Segment& Output::add_segment(const std::string& prefix, uint16_t start, uint16_t stop)
+Segment& Output::add_segment(const std::string& prefix, uint16_t start, uint16_t stop, bool reverse)
 {
 	uint8_t id = segments.size();
 	return segments.emplace_back(*this, prefix, id, start, stop, false);

@@ -6,6 +6,7 @@
 #include "argtable3/argtable3.h"
 
 #include "cmd_system.h"
+#include "cmd_nvs.h"
 
 static void console_task(void *pvParameter) {
 	const char *prompt = LOG_COLOR_I "esp32> " LOG_RESET_COLOR;
@@ -78,6 +79,7 @@ void sys_console_init() {
 	/* Register commands */
 	esp_console_register_help_command();
 	cmd_system_register();
+	cmd_nvs_register();
 	sys_console_register_commands();
 
 	xTaskCreate(&console_task, "console_task", 16384, NULL, 5, NULL);

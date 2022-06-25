@@ -197,4 +197,16 @@ std::string to_string(const T& value)
 	return os.str();
 }
 
+template <typename T, size_t Size>
+struct ArrayHasher {
+	std::size_t operator()(const std::array<T, Size>& a) const {
+		std::size_t h = 0;
+
+		for (auto e : a) {
+			h ^= std::hash<int>{}(e)  + 0x9e3779b9 + (h << 6) + (h >> 2); 
+		}
+		return h;
+	}   
+};
+
 std::string formatBytes(size_t bytes);

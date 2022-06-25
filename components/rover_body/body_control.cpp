@@ -289,7 +289,8 @@ BodyControl::BodyControl() :
 		}),
 	state(std::make_unique<State>(*this)),
 	state_update_callback(nullptr),
-	leds(std::make_unique<Leds::Output>(32*8, GPIO_NUM_13, 0))
+	leds(std::make_unique<Leds::Output>(32*8, GPIO_NUM_13, 0)),
+	events()
 {
 	singleton_instance = std::shared_ptr<BodyControl>(this);
 	leds->leds.setNumSegments(1);

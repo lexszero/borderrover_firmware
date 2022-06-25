@@ -9,8 +9,11 @@
 #include "core_config.hpp"
 #include "core_http.hpp"
 
+#include "cxx_espnow_peer.hpp"
+
 #include "esp_app_format.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 
@@ -66,6 +69,18 @@ static esp_err_t system_info_get_handler(httpd_req_t *req)
 {
 	const esp_app_desc_t *app_desc = esp_ota_get_app_description();
 
+	uint8_t mac[8];
+	using MacAddr = esp_now::PeerAddress;
+
+	esp_read_mac(mac, ESP_MAC_WIFI_STA);
+	MacAddr mac_sta(mac);
+
+	esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
+	MacAddr mac_ap(mac);
+
+	esp_read_mac(mac, ESP_MAC_BT);
+	MacAddr mac_bt(mac);
+
 	json resp = {
 		{"app_name", app_desc->project_name},
 		{"app_version", app_desc->version},
@@ -74,6 +89,9 @@ static esp_err_t system_info_get_handler(httpd_req_t *req)
 		{"heap_free", esp_get_free_heap_size()},
 		{"heap_internal_free", esp_get_free_internal_heap_size()},
 		{"heap_minimum_free", esp_get_minimum_free_heap_size()},
+		{"mac_wifi_sta", to_string(mac_sta)},
+		{"mac_wifi_ap", to_string(mac_ap)},
+		{"mac_bt", to_string(mac_bt)},
 	};
 	return httpd_resp_json(req, resp);
 }

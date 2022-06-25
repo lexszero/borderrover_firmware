@@ -7,6 +7,7 @@ idf_component_register(
 		spiffs nvs_flash
 		experimental_cpp_component
 		cxx_utils
+		cxx_espnow
 		nlohmann_json
 		ota_server
 		sys_console

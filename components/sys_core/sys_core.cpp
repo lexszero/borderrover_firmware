@@ -1,6 +1,7 @@
 #include "sys_core.hpp"
 #include "core_controls.hpp"
 #include "core_status_led.hpp"
+#include "cxx_espnow.hpp"
 #include "utils.h"
 
 #include "ota_server.h"
@@ -16,6 +17,8 @@
 #define TAG "Core"
 
 namespace Core {
+
+using esp_now::espnow;
 
 void sys_console_register_commands() {
 	wifi_register_commands();
@@ -82,6 +85,7 @@ void init() {
 	ota_server_init();
 
 	http = std::make_unique<HTTPServer>("");
+	espnow = std::make_unique<esp_now::ESPNow>();
 	controls = std::make_unique<Controls>();
 }
 

@@ -9,6 +9,7 @@ idf_component_register(
 		sys_console
 		sys_core
 		leds
+		cxx_espnow
 	)
 
 set_source_files_properties(

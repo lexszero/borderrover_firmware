@@ -6,7 +6,6 @@ idf_component_register(
 	)
 
 set_source_files_properties(
-	app.cpp
 	motion_control.cpp
 	motion_control_monitor.cpp
 	PROPERTIES COMPILE_FLAGS -std=gnu++17)

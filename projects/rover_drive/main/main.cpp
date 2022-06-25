@@ -1,14 +1,32 @@
-#include <string.h>
-#include "app.hpp"
-//#include "wifi.h"
-//#include "ota_server.h"
-#include "esp_console.h"
 #include "sys_core.hpp"
 #include "core_status_led.hpp"
+#include "motion_control.hpp"
+#include "vesc.hpp"
+
+#include "esp_console.h"
+#include "argtable3/argtable3.h"
+
+#include <memory>
+#include <string>
 
 #define TAG "app"
 
-Application *app = NULL;
+struct app_cmd_t {
+	struct arg_str *dir;
+	struct arg_end *end;
+};
+
+class Application {
+public:
+	Application();
+	void handleCmd(app_cmd_t *args);
+private:
+	VescUartInterface left_iface, right_iface;
+	Vesc left, right;
+	MotionControl mc;
+};
+
+std::unique_ptr<Application> app;
 
 app_cmd_t app_cmd_args;
 
@@ -118,10 +136,10 @@ void Application::btRemoteDeviceEventCb(enum esp_r1_device_event_e event) {
 }
 */
 
-extern "C" void app_start() {
+extern "C" void app_main() {
 	core_init();
 
-	app = new Application();
+	app = std::make_unique<Application>();
 
 	Core::status_led->blink(500);
 }

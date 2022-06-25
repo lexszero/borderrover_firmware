@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := BorderRover
+PROJECT_NAME := RoverBody
 
 include $(IDF_PATH)/make/project.mk
 

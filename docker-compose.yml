@@ -21,6 +21,18 @@ services:
     command: /bin/bash
     init: true
 
+  sdk-noserial:
+    image: espressif/idf:release-v4.4
+    environment:
+      - ESPPORT=${ESPPORT:-/dev/ttyUSB0}
+    volumes:
+      - ${PWD}:${PWD}
+    working_dir: ${PWD}
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    init: true
+
   build:
     image: espressif/idf:release-v4.4
     environment:

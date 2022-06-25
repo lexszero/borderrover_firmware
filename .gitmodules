@@ -19,3 +19,6 @@
 [submodule "components/leds/NeoPixelBus"]
 	path = components/leds/NeoPixelBus
 	url = https://github.com/Makuna/NeoPixelBus
+[submodule "components/nlohmann_json/json"]
+	path = components/nlohmann_json/json
+	url = https://github.com/nlohmann/json

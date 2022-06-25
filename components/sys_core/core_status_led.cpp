@@ -4,7 +4,7 @@
 
 namespace Core {
 
-std::unique_ptr<StatusLed> status_led;
+std::shared_ptr<StatusLed> status_led;
 
 StatusLed::State::State() :
 	mode(Mode::Solid),

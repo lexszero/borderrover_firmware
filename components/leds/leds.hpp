@@ -1,7 +1,5 @@
 #pragma once
 
-#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
-
 #include "core_control_types.hpp"
 #include "util_misc.hpp"
 #include "util_task.hpp"

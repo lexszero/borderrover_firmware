@@ -15,6 +15,7 @@ extern "C" {
 #endif
 
 esp_err_t wifi_init();
+void wifi_set_hostname(const char *hostname);
 void wifi_register_commands();
 void wifi_wait_for_ip();
 

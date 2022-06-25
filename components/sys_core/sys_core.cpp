@@ -8,11 +8,13 @@
 #include "sys_console.h"
 #include "wifi.h"
 
-#include "nvs_flash.h"
+#include "esp_app_format.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
 #include "esp_spiffs.h"
+#include "nvs_flash.h"
 
 #define TAG "Core"
 
@@ -21,7 +23,6 @@ namespace Core {
 using esp_now::espnow;
 
 void sys_console_register_commands() {
-	wifi_register_commands();
 }
 
 void ota_server_start_callback() {
@@ -59,10 +60,10 @@ esp_err_t fs_init() {
 }
 
 
-void init() {
-	status_led = std::make_unique<StatusLed>(
+void init(const SystemConfig& sysconf) {
+	status_led = std::make_shared<StatusLed>(
 		"led_status",
-		OutputGPIO("led_status", GPIO_NUM_27));
+		OutputGPIO("led_status", sysconf.status_led_gpio));
 
 	status_led->blink(200);
 
@@ -77,11 +78,16 @@ void init() {
 	}
 	ESP_ERROR_CHECK( err );
 
+	const esp_app_desc_t *app_desc = esp_ota_get_app_description();
+
 	fs_init();
 	esp_netif_init();
 	ESP_ERROR_CHECK(esp_event_loop_create_default());
 	wifi_init();
+	wifi_set_hostname(app_desc->project_name);
 	sys_console_init();
+	wifi_register_commands();
+
 	ota_server_init();
 
 	http = std::make_unique<HTTPServer>("");

@@ -25,10 +25,6 @@ PeerAddress::PeerAddress(const uint8_t *_addr)
 	}
 }
 
-PeerAddress::PeerAddress(uint8_t a0, uint8_t a1, uint8_t a2, uint8_t a3, uint8_t a4, uint8_t a5) :
-	addr{a0, a1, a2, a3, a4, a5}
-{}
-
 const uint8_t * PeerAddress::bytes() const
 {
 	return addr.data();
@@ -39,19 +35,18 @@ bool PeerAddress::operator==(const PeerAddress& other) const
 	return addr == other.addr;
 }
 
-std::ostream& operator<<(std::ostream& os, const PeerAddress& addr)
+} // namespace esp_now
+
+std::ostream& operator<<(std::ostream& os, const esp_now::PeerAddress& addr)
 {
 	using namespace std;
 	size_t i = 0;
 	for (const auto& b : addr.addr) {
-		os << setfill('0') << setw(2) << right << hex << b;
+		os << setfill('0') << setw(2) << right << hex << static_cast<unsigned>(b);
 		if (i < ESP_NOW_ETH_ALEN-1) {
 			os << ":";
 			i++;
 		}
 	}
 	return os;
-}
-
-
 }

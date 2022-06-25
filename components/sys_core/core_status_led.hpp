@@ -48,6 +48,6 @@ class StatusLed :
 		void timer_cb(void);
 };
 
-extern std::unique_ptr<StatusLed> status_led;
+extern std::shared_ptr<StatusLed> status_led;
 
 } // namespace Core

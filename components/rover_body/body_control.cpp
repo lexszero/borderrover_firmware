@@ -25,6 +25,7 @@ std::array<OutputGPIO, OutputId::_TotalCount> BodyControl::State::gpios = {{
 using std::chrono::microseconds;
 using std::chrono::time_point_cast;
 using std::chrono::duration_cast;
+using esp_now::espnow;
 
 OutputId from_string(const std::string& s)
 {
@@ -289,13 +290,17 @@ BodyControl::BodyControl() :
 		}),
 	state(std::make_unique<State>(*this)),
 	state_update_callback(nullptr),
-	leds(std::make_unique<Leds::Output>(32*8, GPIO_NUM_13, 0)),
+	leds(32*8, GPIO_NUM_13, 0),
+	led_link(std::make_shared<Core::StatusLed>("led_link",
+		OutputGPIO("led_link", GPIO_NUM_26))),
 	events()
 {
 	singleton_instance = std::shared_ptr<BodyControl>(this);
-	leds->leds.setNumSegments(1);
-	leds->segments.emplace_back(*leds, "led", 0, 0, 32*8);
-	leds->start();
+
+	espnow->set_led(led_link);
+	leds.leds.setNumSegments(1);
+	leds.segments.emplace_back(leds, "led", 0, 0, 32*8);
+	leds.start();
 	Task::start();
 	register_console_cmd();
 }

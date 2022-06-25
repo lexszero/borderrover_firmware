@@ -103,7 +103,7 @@ static void on_wifi_disconnect(void* arg, esp_event_base_t event_base,
 
 esp_err_t wifi_connect(wifi_config_t *config) {
 	ESP_LOGI(TAG, "Connecting...");
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
 	if (config) {
 		ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, config));
 	}
@@ -143,6 +143,12 @@ esp_err_t wifi_init(void)
 	}
 
 	return ESP_OK;
+}
+
+void wifi_set_hostname(const char *hostname)
+{
+	ESP_ERROR_CHECK( esp_netif_set_hostname(netif_sta, hostname) );
+	ESP_ERROR_CHECK( esp_netif_set_hostname(netif_ap, hostname) );
 }
 
 void wifi_wait_for_ip()
@@ -194,10 +200,13 @@ static int wifi_cmd_sta(int argc, char** argv)
 
 static bool wifi_cmd_sta_scan(const char* ssid)
 {
+	wifi_mode_t mode;
 	wifi_scan_config_t scan_config = { 0 };
 	scan_config.ssid = (uint8_t *) ssid;
 
-	ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
+	esp_wifi_get_mode(&mode);
+	ESP_ERROR_CHECK( esp_wifi_set_mode((mode == WIFI_MODE_AP) ? WIFI_MODE_APSTA : WIFI_MODE_STA));
+	ESP_ERROR_CHECK( esp_wifi_start() );
 	ESP_ERROR_CHECK( esp_wifi_scan_start(&scan_config, false) );
 
 	return true;
@@ -276,7 +285,7 @@ static int wifi_cmd_query(int argc, char** argv)
 	if (WIFI_MODE_AP == mode) {
 		esp_wifi_get_config(WIFI_IF_AP, &cfg);
 		ESP_LOGI(TAG, "AP mode, %s %s", cfg.ap.ssid, cfg.ap.password);
-	} else if (WIFI_MODE_STA == mode) {
+	} else if ((mode == WIFI_MODE_STA) || (mode == WIFI_MODE_APSTA)) {
 		int bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 0);
 		if (bits & CONNECTED_BIT) {
 			esp_wifi_get_config(WIFI_IF_STA, &cfg);
@@ -300,7 +309,7 @@ static uint32_t wifi_get_local_ip(void)
 	wifi_mode_t mode;
 
 	esp_wifi_get_mode(&mode);
-	if (WIFI_MODE_STA == mode) {
+	if ((mode == WIFI_MODE_STA) || (mode == WIFI_MODE_APSTA)) {
 		bits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, 0, 1, 0);
 		if (bits & CONNECTED_BIT) {
 			ifx = netif_sta;

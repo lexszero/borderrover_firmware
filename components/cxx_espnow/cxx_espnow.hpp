@@ -2,21 +2,32 @@
 
 #include "util_task.hpp"
 #include "util_queue.hpp"
-
-#include "cxx_espnow_message.hpp"
-#include "cxx_espnow_peer.hpp"
 #include "util_misc.hpp"
 
-#include "esp_now.h"
+#include "core_status_led.hpp"
+#include "cxx_espnow_message.hpp"
+#include "cxx_espnow_peer.hpp"
 
+#include "driver/gpio.h"
+#include "esp_now.h"
+#include "esp_wifi.h"
+
+#include <chrono>
 #include <future>
 #include <functional>
 #include <memory>
-#include <string>
+#include <optional>
 #include <ostream>
+#include <string>
 #include <unordered_map>
 
 namespace esp_now {
+
+using namespace std::literals;
+using Clock = std::chrono::system_clock;
+using std::chrono::milliseconds;
+using duration = milliseconds;
+using time_point = std::chrono::time_point<Clock, milliseconds>;
 
 using SendResult = bool;
 
@@ -27,20 +38,35 @@ public:
 	ESPNow();
 	~ESPNow();
 
+	void set_led(std::shared_ptr<Core::StatusLed> led);
 	void add_peer(const esp_now_peer_info_t& info);
-	void send(const PeerAddress& peer, const MessageInterface& msg);
+	void add_peer(
+			const PeerAddress& address,
+			const std::optional<PeerKey>& key = std::nullopt,
+			uint8_t channel = 0
+			);
+	std::shared_future<SendResult> send(const MessageInterface& msg);
 
-	using MessageHandler = std::function<void(const PeerAddress&, const Message&)>;
+	using MessageHandler = std::function<void(const Message&)>;
 	void on_recv(MessageType type, MessageHandler&& handler);
 
 private:
+	std::shared_ptr<Core::StatusLed> led;
+	wifi_interface_t iface;
 	std::unordered_map<MessageType, MessageHandler> handlers;
 
 	struct Peer {
 		Peer();
-		bool send_in_progress;
-		std::shared_future<SendResult> send_result;
-		uint32_t last_seq;
+
+		struct ResultPromise {
+			std::promise<SendResult> promise;
+			std::shared_future<SendResult> future;
+		};
+		std::unique_ptr<ResultPromise> send_result;
+		uint32_t last_rx_seq;
+		time_point last_rx_time;
+		uint32_t last_tx_seq;
+		time_point last_tx_time;
 	};
 	std::unordered_map<PeerAddress, Peer, PeerAddressHasher> peers;
 
@@ -66,7 +92,7 @@ private:
 		void release();
 
 		const PeerAddress peer;
-		const uint8_t *data;
+		uint8_t *data;
 		const size_t data_len;
 	};
 
@@ -84,7 +110,8 @@ private:
 	};
 
 	Queue<Event> events;
-	void handle_msg(const PeerAddress& peer, const Message& msg);
+	void handle_send_cb(EventSend& ev);
+	void handle_recv_cb(EventRecv& ev);
 	friend void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status);
 	friend void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int data_len);
 };

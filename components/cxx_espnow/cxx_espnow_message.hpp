@@ -4,6 +4,7 @@
 #include "util_misc.hpp"
 
 #include <esp_crc.h>
+#include <esp_log.h>
 
 #include <cstdint>
 #include <functional>
@@ -17,7 +18,8 @@ namespace esp_now {
 using Buffer = std::vector<uint8_t>;
 
 enum MessageType : uint8_t {
-	Ping = 0,
+	Announce = 0,
+	Ping,
 	Pong,
 };
 
@@ -35,10 +37,10 @@ class MessageInterface
 public:
 	virtual std::string to_string() const = 0;
 	virtual const Buffer& prepare(uint32_t seq) const = 0;
+	virtual const PeerAddress& peer() const = 0;
 	virtual const MessageHeader& header() const = 0;
 	virtual const void * payload() const = 0;
 
-	friend std::ostream& operator<<(std::ostream& os, const MessageInterface& m);
 };
 
 using MessageCallback = std::function<void(const MessageInterface& msg)>;
@@ -50,11 +52,13 @@ public:
 	static constexpr uint32_t MAGIC = 0xBEEFBABE;
 
 	Message(const Message& other) :
+		peer_addr(other.peer_addr),
 		buffer(other.buffer.begin(), other.buffer.end()),
 		hdr(*reinterpret_cast<MessageHeader *>(buffer.data()))
 	{}
 
-	Message(MessageType type, size_t payload_length = 0) :
+	Message(const PeerAddress& peer, MessageType type, size_t payload_length = 0) :
+		peer_addr(peer),
 		buffer(sizeof(MessageHeader) + payload_length),
 		hdr(*reinterpret_cast<MessageHeader *>(buffer.data()))
 	{
@@ -62,17 +66,22 @@ public:
 		hdr.type = type;
 	}
 
-	Message(const uint8_t *data, size_t length) :
+	Message(const PeerAddress& peer, const uint8_t *data, size_t length) :
+		peer_addr(peer),
 		buffer(length),
 		hdr(*reinterpret_cast<MessageHeader *>(buffer.data()))
 	{
 		for (auto i = 0; i < length; i++) {
 			buffer[i] = data[i];
 		}
+		auto crc_cal = esp_crc16_le(UINT16_MAX, buffer.data() + sizeof(MessageHeader), hdr.length);
+
+		if (crc_cal != hdr.crc)
+			throw std::runtime_error("crc check failed");
 	}
 
-	Message(MessageType type, const uint8_t *data, size_t length) :
-		Message(type, length)
+	Message(const PeerAddress& peer, MessageType type, const uint8_t *data, size_t length) :
+		Message(peer, type, length)
 	{
 		for (auto i = 0; i < length; i++) {
 			buffer[i+sizeof(MessageHeader)] = data[i];
@@ -82,36 +91,49 @@ public:
 
 	Message& operator=(Message&& other)
 	{
+		peer_addr = other.peer_addr;
 		buffer = other.buffer;
 		hdr = *reinterpret_cast<MessageHeader *>(buffer.data());
 		return *this;
 	}
 
-
 	virtual std::string to_string() const override
 	{
-		std::ostringstream ss;
-		ss << "Message[magic:" << hdr.magic << ", seq:" << hdr.seq << ", type:" << hdr.type << ", len:" << hdr.length << "]{";
-		for (size_t i = 2; i < buffer.size(); i++) {
-			ss << buffer[i];
+		using namespace std;
+		ostringstream ss;
+		ss << "Message[peer:" << peer_addr <<
+			", magic:" << hex << hdr.magic <<
+			", seq:" << hdr.seq <<
+			", type:" << hdr.type <<
+			", len:" << static_cast<unsigned>(hdr.length) << "]{";
+		for (size_t i = sizeof(MessageHeader); i < buffer.size(); i++) {
+			ss << setfill('0') << setw(2) << right << hex << static_cast<unsigned>(buffer[i]);
 		}
 		ss << "}";
 		return ss.str();
 	}
-	virtual const Buffer& prepare(uint32_t seq) const override {
+	virtual const Buffer& prepare(uint32_t seq) const override
+	{
 		hdr.seq = seq;
 		hdr_update_payload();
 		return buffer;
 	}
-	virtual const MessageHeader& header() const override {
+	virtual const PeerAddress& peer() const override
+	{
+		return peer_addr;
+	}
+	virtual const MessageHeader& header() const override
+	{
 		hdr_update_payload();
 		return hdr;
 	}
-	virtual const void *payload() const override {
+	virtual const void *payload() const override
+	{
 		return buffer.data() + sizeof(MessageHeader);
 	}
 
 protected:
+	PeerAddress peer_addr;
 	Buffer buffer;
 	MessageHeader& hdr;
 
@@ -129,8 +151,16 @@ class GenericMessage :
 	GenericMessage(Message&& msg) :
 		Message(msg)
 	{}
+
+	const Payload& content() const
+	{
+		return *reinterpret_cast<Payload *>(buffer.data() + sizeof(MessageHeader));
+	}
 };
 
 using MessagePing = GenericMessage<MessageType::Ping, void>;
+using MessageAnnounce = GenericMessage<MessageType::Announce, void>;
 
 }
+
+std::ostream& operator<<(std::ostream& os, const esp_now::MessageInterface& m);

@@ -159,7 +159,8 @@ class BodyControl :
 		std::unique_ptr<State> state;
 		CallbackFn state_update_callback;
 
-		std::unique_ptr<Leds::Output> leds;
+		Leds::Output leds;
+		std::shared_ptr<Core::StatusLed> led_link;
 
 		EventGroup<Event> events;
 

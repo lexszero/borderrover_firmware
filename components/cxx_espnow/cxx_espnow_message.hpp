@@ -16,8 +16,9 @@
 namespace esp_now {
 
 using Buffer = std::vector<uint8_t>;
+using MessageType = uint8_t;
 
-enum MessageType : uint8_t {
+enum MessageId {
 	Announce = 0,
 	Ping,
 	Pong,
@@ -132,6 +133,12 @@ public:
 		return buffer.data() + sizeof(MessageHeader);
 	}
 
+	template <typename Payload>
+	const Payload& payload_as() const
+	{
+		return *reinterpret_cast<Payload *>(buffer.data() + sizeof(MessageHeader));
+	};
+
 protected:
 	PeerAddress peer_addr;
 	Buffer buffer;
@@ -144,12 +151,18 @@ protected:
 	}
 };
 
-template <uint8_t Type, typename Payload>
+template <MessageType Type, typename Payload>
 class GenericMessage :
 	public Message
 {
+public:
 	GenericMessage(Message&& msg) :
-		Message(msg)
+		Message(std::move(msg))
+	{}
+
+	GenericMessage(const PeerAddress& peer, const Payload& data) :
+		Message(peer, Type,
+				reinterpret_cast<const uint8_t *>(&data), sizeof(Payload))
 	{}
 
 	const Payload& content() const
@@ -158,8 +171,8 @@ class GenericMessage :
 	}
 };
 
-using MessagePing = GenericMessage<MessageType::Ping, void>;
-using MessageAnnounce = GenericMessage<MessageType::Announce, void>;
+using MessagePing = GenericMessage<MessageId::Ping, void>;
+using MessageAnnounce = GenericMessage<MessageId::Announce, void>;
 
 }
 

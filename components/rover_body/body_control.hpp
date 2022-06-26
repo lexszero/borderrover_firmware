@@ -2,6 +2,7 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 
+#include "body_control_message.hpp"
 #include "core_control_types.hpp"
 #include "core_gpio.hpp"
 
@@ -12,6 +13,7 @@
 #include "util_event.hpp"
 #include "util_lockable.hpp"
 #include "util_misc.hpp"
+#include "util_time.hpp"
 
 #include <freertos/FreeRTOS.h>
 #include <esp_log.h>
@@ -25,11 +27,6 @@
 using nlohmann::json;
 
 using Core::OutputGPIO;
-using namespace std::literals;
-using std::chrono::milliseconds;
-using Clock = std::chrono::system_clock;
-using duration = milliseconds;
-using time_point = std::chrono::time_point<Clock, milliseconds>;
 
 enum OutputId
 {
@@ -115,6 +112,7 @@ class BodyControl :
 			State(BodyControl& bc);
 
 			time_point timestamp;
+			time_point lockout_change_time;
 			Mode mode;
 
 			static std::array<OutputGPIO, static_cast<size_t>(OutputId::_TotalCount)> gpios;
@@ -135,6 +133,8 @@ class BodyControl :
 
 		enum Event {
 			StateUpdate = (1 << 0),
+			RemoteLinkUp = (1 << 1),
+			RemoteLinkDown = (1 << 2),
 
 			Any = 0xff,
 		};
@@ -142,7 +142,7 @@ class BodyControl :
 
 		void reset();
 		OutputId get_output_id(const std::string& name);
-		void set_output(OutputId output, bool on);
+		bool set_output(OutputId output, bool on);
 		void get_output(OutputId output) const;
 		void pulse_output(OutputId output, uint8_t length_percent);
 		void test_outputs();
@@ -154,6 +154,7 @@ class BodyControl :
 		Core::ControlSwitch lockout;
 
 	private:
+		using unique_lock = Lockable::unique_lock;
 		static constexpr auto WAIT_TIMEOUT = 10ms;
 
 		std::unique_ptr<State> state;
@@ -166,9 +167,17 @@ class BodyControl :
 
 		void run() override;
 		void notify();
+		bool set_output(const unique_lock& lock, OutputId output, bool on);
 
 		void register_console_cmd();
 		void handle_console_cmd(int argc, char **argv);
+
+		RemoteState remote;
+		time_point remote_last_message_time;
+		time_point remote_state_time;
+		void handle_remote_state(const RemoteState& remote);
+		void remote_button_direct_mapping(const unique_lock& lock,
+				const RemoteState& st, RemoteButton button, OutputId output);
 
 		static std::shared_ptr<BodyControl> singleton_instance;
 

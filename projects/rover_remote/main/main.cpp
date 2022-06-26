@@ -3,13 +3,14 @@
 #include "core_status_led.hpp"
 #include "core_gpio.hpp"
 #include "util_task.hpp"
+#include "util_time.hpp"
 #include "cxx_espnow.hpp"
+#include "body_control_message.hpp"
 
 #include "argtable3/argtable3.h"
 #include "esp_console.h"
 #include "esp_log.h"
 
-#include <chrono>
 #include <memory>
 #include <string>
 
@@ -17,7 +18,15 @@
 
 #define TAG "app"
 
+using namespace std::literals;
+using namespace Core;
 using namespace esp_now;
+
+namespace {
+
+static const auto PeerRoverBody = PeerAddress(0x3c, 0x71, 0xbf, 0x58, 0xf2, 0x89);
+
+}  // namespace
 
 class Application :
 	private Task
@@ -26,43 +35,99 @@ public:
 	Application();
 	
 private:
-	Leds::Output leds;
+	RemoteState state;
+	std::shared_ptr<StatusLed> led_red, led_blue;
+	Leds::Output pixels;
+	std::array<InputGPIO, RemoteButton::_Count> buttons;
+	
+	time_point last_send_announce;
+	time_point last_send_state;
+	time_point last_receive;
 
 	void run() override;
+	bool poll_inputs();
 };
 
 Application::Application() :
 	Task(TAG, 16*1024, 20),
-	leds(32*8, GPIO_NUM_13, 0)
+	state(),
+	led_red(std::make_shared<StatusLed>("led_red",
+				OutputGPIO("led_red", GPIO_NUM_4, true, true))),
+	led_blue(status_led),
+	pixels(32*8, GPIO_NUM_13, 0),
+	buttons {
+		InputGPIO {"joystick",	GPIO_NUM_34,	false},
+		InputGPIO {"btn_left",	GPIO_NUM_32,	false},
+		InputGPIO {"btn_right",	GPIO_NUM_33,	false},
+		InputGPIO {"btn_up",	GPIO_NUM_25,	false},
+		InputGPIO {"btn_down",	GPIO_NUM_26,	false},
+		InputGPIO {"sw_red",	GPIO_NUM_27,	false},
+		InputGPIO {"sw_blue",	GPIO_NUM_14,	false},
+	},
+	last_send_announce(),
+	last_send_state(),
+	last_receive()
 {
-	espnow->set_led(Core::status_led);
-	leds.leds.setNumSegments(1);
-	leds.segments.emplace_back(leds, "led", 0, 0, 170);
-	leds.start();
+	espnow->set_led(led_blue);
+	espnow->add_peer(PeerBroadcast, std::nullopt, 5);
+	espnow->add_peer(PeerRoverBody, std::nullopt, 5);
+
+	pixels.leds.setNumSegments(1);
+	pixels.segments.emplace_back(pixels, "led", 0, 0, 170);
+	pixels.start();
+
 	Task::start();
 }
 
 void Application::run()
 {
 	ESP_LOGI(TAG, "started");
-	espnow->add_peer(PeerBroadcast, std::nullopt, 5);
 	while (1) {
+		const auto now = time_now();
 		try {
-			espnow->send(Message(PeerBroadcast, MessageType::Announce));
+			if (now - last_send_announce > 1s) {
+				espnow->send(Message(PeerBroadcast, esp_now::MessageId::Announce));
+				last_send_announce = now;
+			}
+			bool changed = poll_inputs();
+			if (changed || (now - last_send_state > 200ms)) {
+				ESP_LOGI(TAG, "%s", to_string(state).c_str());
+				espnow->send(MessageRoverRemoteState(PeerRoverBody, state));
+				last_send_state = now;
+			}
 		}
 		catch (const std::exception& e) {
 			ESP_LOGE(TAG, "Exception: %s", e.what());
 		}
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+		std::this_thread::sleep_for(1ms);
 	}
+}
+
+bool Application::poll_inputs()
+{
+	bool changed = false;
+	RemoteState st;
+	int i = 0;
+	st.btn_mask = 0;
+	for (const auto& btn : buttons) {
+		if (btn.get())
+			st.btn_mask |= (1 << i);
+	}
+	if (st.btn_mask != state.btn_mask) {
+		changed = true;
+	}
+	state = st;
+	return changed;
 }
 
 std::unique_ptr<Application> app;
 
 extern "C" void app_main() {
-	core_init();
+	Core::init({
+			.status_led_gpio = GPIO_NUM_2
+			});
 
 	app = std::make_unique<Application>();
 
-	Core::status_led->blink(500);
+	status_led->blink(100, 500);
 }

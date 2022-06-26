@@ -8,6 +8,10 @@
 
 #define TAG "bc"
 
+using namespace esp_now;
+
+static const PeerAddress PeerRemote(0x3c, 0x71, 0xbf, 0x58, 0xfa, 0x65);
+
 std::shared_ptr<BodyControl> BodyControl::singleton_instance = nullptr;
 
 std::array<OutputGPIO, OutputId::_TotalCount> BodyControl::State::gpios = {{
@@ -25,7 +29,6 @@ std::array<OutputGPIO, OutputId::_TotalCount> BodyControl::State::gpios = {{
 using std::chrono::microseconds;
 using std::chrono::time_point_cast;
 using std::chrono::duration_cast;
-using esp_now::espnow;
 
 OutputId from_string(const std::string& s)
 {
@@ -124,7 +127,7 @@ void PulsedOutput::set(bool new_state)
 {
 	auto lock = take_unique_lock();
 
-	auto now = time_point_cast<duration>(Clock::now());
+	auto now = time_now();
 
 	reset_single(lock);
 
@@ -155,7 +158,7 @@ void PulsedOutput::reset(const PulsedOutput::unique_lock& lock)
 	(void)lock;
 
 	gpio.set(false);
-	t_last_off = time_point_cast<duration>(Clock::now());
+	t_last_off = time_now();
 }
 
 void PulsedOutput::reset_single(const unique_lock& lock)
@@ -197,7 +200,7 @@ void PulsedOutput::pulse_single(const PulsedOutput::unique_lock& lock, const dur
 	reset_single(lock);
 
 	gpio.set(true);
-	t_last_on = time_point_cast<duration>(Clock::now());
+	t_last_on = time_now();
 	
 	timer_single.start(std::chrono::duration_cast<microseconds>(t_on));
 	running_single = true;
@@ -227,7 +230,7 @@ duration PulsedOutput::relative_pulse_length(uint32_t percent)
 }
 
 BodyControl::State::State(BodyControl& bc) :
-	timestamp(time_point_cast<duration>(Clock::now())),
+	timestamp(time_now()),
 	mode(Mode::Disabled),
 	lockout(gpios[to_underlying(OutputId::Lockout)]),
 	outs {			//	GPIO			start_id	min_pulse	max_pulse	min_pause
@@ -298,6 +301,19 @@ BodyControl::BodyControl() :
 	singleton_instance = std::shared_ptr<BodyControl>(this);
 
 	espnow->set_led(led_link);
+	espnow->on_recv(esp_now::MessageId::Announce,
+		[this](const Message& msg) {
+			auto peer = msg.peer();
+			ESP_LOGD(TAG, "Announce from %s", to_string(peer).c_str());
+			if (peer == PeerRemote) {
+				remote_last_message_time = time_now();
+			}
+		});
+	espnow->on_recv(static_cast<MessageType>(RoverRemoteState),
+		[this](const Message& msg) {
+			handle_remote_state(msg.payload_as<const RemoteState>());
+		});
+
 	leds.leds.setNumSegments(1);
 	leds.segments.emplace_back(leds, "led", 0, 0, 32*8);
 	leds.start();
@@ -322,16 +338,31 @@ void BodyControl::reset()
 	notify();
 }
 
-void BodyControl::set_output(OutputId id, bool on)
+bool BodyControl::set_output(OutputId id, bool on)
 {
-	auto lock = take_unique_lock();
+	return set_output(take_unique_lock(), id, on);
+}
+
+bool BodyControl::set_output(const unique_lock& lock, OutputId id, bool on)
+{
+	(void)lock;
+
+	bool changed = false;
 	if (id == OutputId::Lockout) {
-		state->lockout.set(on);
+		if (state->lockout.get() != on) {
+			state->lockout.set(on);
+			state->lockout_change_time = time_now();
+			changed = true;
+		}
 	}
 	else {
 		auto& out = state->outs[to_underlying(id)];
-		out.enable.set(on);
+		if (out.get() != on) {
+			out.enable.set(on);
+			changed = true;
+		}
 	}
+	return changed;
 }
 
 void BodyControl::pulse_output(OutputId id, uint8_t length)
@@ -386,6 +417,28 @@ void BodyControl::run()
 
 void BodyControl::notify()
 {
-	state->timestamp = time_point_cast<duration>(Clock::now());
+	state->timestamp = time_now();
 	events.set(Event::StateUpdate);
+}
+
+void BodyControl::remote_button_direct_mapping(const unique_lock& lock, const RemoteState& st, RemoteButton btn, OutputId output)
+{
+	(void)lock;
+	set_output(lock, output, st.is_pressed(btn));
+}
+
+void BodyControl::handle_remote_state(const RemoteState& st)
+{
+	ESP_LOGI(TAG, "%s", to_string(st).c_str());
+	auto lock = take_unique_lock();
+	if (st.is_pressed(RemoteButton::SwitchRed)) {
+		set_output(lock, OutputId::Lockout, true);
+		remote_button_direct_mapping(lock, st, RemoteButton::Left, OutputId::Valve0);
+		remote_button_direct_mapping(lock, st, RemoteButton::Right, OutputId::Valve1);
+		remote_button_direct_mapping(lock, st, RemoteButton::Up, OutputId::Aux0);
+		remote_button_direct_mapping(lock, st, RemoteButton::Down, OutputId::Aux1);
+	}
+	else {
+		set_output(lock, OutputId::Lockout, false);
+	}
 }

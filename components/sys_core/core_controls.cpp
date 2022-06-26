@@ -1,5 +1,8 @@
 #include "core_controls.hpp"
 #include "core_http.hpp"
+#include "core_messages.hpp"
+
+#include "cxx_espnow.hpp"
 
 #include "argtable3/argtable3.h"
 #include "esp_console.h"
@@ -7,6 +10,7 @@
 
 namespace Core {
 
+using esp_now::espnow;
 using namespace std::string_literals;
 
 static const char *TAG = "controls";
@@ -69,6 +73,24 @@ Controls::Controls()
 	http->on(std::string(URL_PREFIX) + "*", HTTP_POST, [this](httpd_req_t *req) {
 		return http_post_handler(req);
 	});
+	/*
+	espnow->on_recv(static_cast<esp_now::MessageType>(MessageId::CtlGet), [this](Message&& _msg) {
+			try {
+				auto req_msg = MessageGet(_msg);
+				auto req = req_msg.content();
+
+				auto& ctl = *controls.at(req.key);
+
+				CtlKeyValue resp;
+				strncpy(resp.key, req.key, KEY_LENGTH);
+				strncpy(resp.value, ctl.to_string().c_str(), VALUE_LENGTH);
+				espnow->send(MessageUpdate(req_msg.peer(), resp));
+			}
+			catch (const std::exception& e) {
+				ESP_LOGE(TAG, "MessageGet request failed: %s", e.what());
+			}
+		});
+	*/
 }
 
 void Controls::register_console_cmd() {

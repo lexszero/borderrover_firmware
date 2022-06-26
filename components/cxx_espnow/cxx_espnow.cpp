@@ -254,7 +254,7 @@ void ESPNow::handle_recv_cb(ESPNow::EventRecv& ev)
 	if (led)
 		led->blink_once(100);
 	try {
-		const auto msg = Message(ev.peer, ev.data, ev.data_len);
+		auto msg = Message(ev.peer, ev.data, ev.data_len);
 		ev.release();
 		ESP_LOGD(TAG, "recv: %s", msg.to_string().c_str());
 	

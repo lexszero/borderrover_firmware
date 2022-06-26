@@ -28,22 +28,6 @@ using nlohmann::json;
 
 using Core::OutputGPIO;
 
-enum OutputId
-{
-	Valve0,
-	Valve1,
-	Valve2,
-	Pump,
-	Igniter,
-	Aux0,
-	Aux1,
-	Lockout,
-	_TotalCount,
-	_PulsedCount = 7
-};
-
-OutputId from_string(const std::string& s);
-
 class PulsedOutput :
 	private Lockable<std::shared_mutex>
 {
@@ -122,6 +106,7 @@ class BodyControl :
 
 			void print() const;
 			json as_json() const;
+			BodyPackedState pack() const;
 
 			OutputGPIO& get_gpio(OutputId output);
 			PulsedOutput& get_output(OutputId output);

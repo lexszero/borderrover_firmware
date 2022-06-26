@@ -7,6 +7,7 @@ using esp_now::GenericMessage;
 
 enum MessageId : MessageType {
 	RoverRemoteState = 0x90,
+	RoverBodyState = 0xA0,
 };
 
 enum RemoteButton : uint32_t
@@ -43,19 +44,34 @@ struct RemoteState
 
 std::ostream& operator<<(std::ostream& os, const RemoteState& st);
 
-struct RemoteEvent
-{
-	enum Type : uint8_t {
-		Button,
-		Joystick
-	};
+using MessageRoverRemoteState = GenericMessage<RoverRemoteState, RemoteState>;
 
-	Type type;
-	union {
-		uint32_t btn_mask;
-		RemoteJoystickState joystick;
-	};
+enum OutputId
+{
+	Valve0,
+	Valve1,
+	Valve2,
+	Pump,
+	Igniter,
+	Aux0,
+	Aux1,
+	Lockout,
+	_TotalCount,
+	_PulsedCount = 7
+};
+
+OutputId from_string(const std::string& s);
+
+struct BodyPackedState
+{
+	bool lockout;
+	uint32_t outputs;
+
+	bool is_on(OutputId id) const
+	{
+		return outputs & (1 << to_underlying(id));
+	}
 } __attribute__((__packed__));
 
+using MessageRoverBodyState = GenericMessage<RoverBodyState, BodyPackedState>;
 
-using MessageRoverRemoteState = GenericMessage<RoverRemoteState, RemoteState>;

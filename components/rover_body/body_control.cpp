@@ -10,7 +10,7 @@
 
 using namespace esp_now;
 
-static const PeerAddress PeerRemote(0x3c, 0x71, 0xbf, 0x58, 0xfa, 0x65);
+static const PeerAddress PeerRemote(0x0c, 0xb8, 0x15, 0xf6, 0x6a, 0xed);
 
 std::shared_ptr<BodyControl> BodyControl::singleton_instance = nullptr;
 
@@ -264,6 +264,13 @@ void BodyControl::State::print() const
 	std::cout << std::endl;
 }
 
+BodyPackedState BodyControl::State::pack() const
+{
+	BodyPackedState st;
+	st.lockout = lockout.get();
+	return st;
+}
+
 OutputGPIO& BodyControl::State::get_gpio(OutputId output)
 {
 	if (output == OutputId::Lockout)
@@ -301,6 +308,8 @@ BodyControl::BodyControl() :
 	singleton_instance = std::shared_ptr<BodyControl>(this);
 
 	espnow->set_led(led_link);
+	espnow->add_peer(PeerBroadcast, std::nullopt, DEFAULT_WIFI_CHANNEL);
+	espnow->add_peer(PeerRemote, std::nullopt, DEFAULT_WIFI_CHANNEL);
 	espnow->on_recv(esp_now::MessageId::Announce,
 		[this](const Message& msg) {
 			auto peer = msg.peer();
@@ -411,6 +420,7 @@ void BodyControl::run()
 		if (event & Event::StateUpdate) {
 			Core::status_led->blink_once(50);
 			print_state();
+			espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
 		}
 	}
 }

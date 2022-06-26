@@ -1,6 +1,7 @@
 #include "cxx_espnow.hpp"
 #include "util_task.hpp"
 #include "util_misc.hpp"
+#include "util_time.hpp"
 
 #include "esp_log.h"
 
@@ -10,7 +11,6 @@
 
 namespace esp_now {
 
-using std::chrono::time_point_cast;
 std::unique_ptr<ESPNow> espnow;
 
 static constexpr TickType_t MAX_DELAY = 512;
@@ -77,6 +77,7 @@ ESPNow::Event::Event(EventRecv&& recv) :
 
 ESPNow::ESPNow() :
 	Task(TAG, 4*1024, 15),
+	Lockable(TAG),
 	send_seq(0),
 	events(16)
 {
@@ -129,6 +130,7 @@ void ESPNow::add_peer(
 		uint8_t channel
 		)
 {
+	const auto lock = take_unique_lock();
 	const auto& found = peers.find(address);
 	if (found != peers.end())
 		return;
@@ -142,6 +144,7 @@ void ESPNow::add_peer(
 	else {
 		info.encrypt = false;
 	}
+	info.channel = 0;
 	info.ifidx = iface;
 
 	auto [peer, is_new] = peers.try_emplace(address);
@@ -164,6 +167,7 @@ void ESPNow::add_peer(
 
 std::shared_future<SendResult> ESPNow::send(const MessageInterface& msg)
 {
+	const auto lock = take_unique_lock();
 	const auto& addr = msg.peer();
 	auto& peer = peers.at(addr);
 	if (peer.send_result) {
@@ -190,7 +194,7 @@ std::shared_future<SendResult> ESPNow::send(const MessageInterface& msg)
 			throw std::runtime_error("esp_now_send: current WiFi interface doesn’t match that of peer");
 	}
 	peer.last_tx_seq = send_seq;
-	peer.last_tx_time = time_point_cast<duration>(Clock::now());
+	peer.last_tx_time = time_now();
 	peer.send_result = std::make_unique<Peer::ResultPromise>();
 	peer.send_result->future = peer.send_result->promise.get_future().share();
 	return peer.send_result->future;
@@ -231,8 +235,9 @@ void ESPNow::run()
 
 void ESPNow::handle_send_cb(ESPNow::EventSend& ev)
 {
+	const auto lock = take_unique_lock();
 	if (led)
-		led->blink_once(100);
+		led->blink_once(50);
 	auto found = peers.find(ev.peer);
 	if (found == peers.end()) {
 		ESP_LOGW(TAG, "send cb event for unknown peer %s", ::to_string(ev.peer).c_str());
@@ -242,7 +247,7 @@ void ESPNow::handle_send_cb(ESPNow::EventSend& ev)
 	ESP_LOGD(TAG, "send %s: status %d",
 			to_string(ev.peer).c_str(),
 			ev.status);
-	peer.last_tx_time = time_point_cast<duration>(Clock::now());
+	peer.last_tx_time = time_now();
 	if (peer.send_result) {
 		peer.send_result->promise.set_value(ev.status == ESP_NOW_SEND_SUCCESS);
 		peer.send_result.reset();
@@ -251,8 +256,9 @@ void ESPNow::handle_send_cb(ESPNow::EventSend& ev)
 
 void ESPNow::handle_recv_cb(ESPNow::EventRecv& ev)
 {
+	const auto lock = take_shared_lock();
 	if (led)
-		led->blink_once(100);
+		led->blink_once(50);
 	try {
 		auto msg = Message(ev.peer, ev.data, ev.data_len);
 		ev.release();

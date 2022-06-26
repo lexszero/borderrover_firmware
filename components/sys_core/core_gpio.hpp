@@ -13,7 +13,7 @@ class InputGPIO
 	public:
 		using CallbackFn = std::function<void(bool)>;
 
-		InputGPIO(const char* name, gpio_num_t gpio, bool active_low = false) :
+		InputGPIO(const char* name, gpio_num_t gpio, bool active_low = false, gpio_pull_mode_t pull_mode = GPIO_FLOATING) :
 			name(name),
 			gpio(gpio),
 			active_low(active_low),
@@ -22,6 +22,7 @@ class InputGPIO
 			ESP_LOGD(name, "init input %s, gpio %d, active_low %d", name, gpio, active_low);
 			gpio_pad_select_gpio(gpio);
 			gpio_set_direction(gpio, GPIO_MODE_INPUT);
+			gpio_set_pull_mode(gpio, pull_mode);
 		}
 
 		void on_change(const CallbackFn&& cb)

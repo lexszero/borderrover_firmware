@@ -108,6 +108,7 @@ esp_err_t wifi_connect(wifi_config_t *config) {
 		ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, config));
 	}
 	ESP_ERROR_CHECK(esp_wifi_start());
+	ESP_ERROR_CHECK(esp_wifi_set_channel(DEFAULT_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE));
 	ESP_ERROR_CHECK(esp_wifi_connect());
 
 	return ESP_OK;

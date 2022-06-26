@@ -2,6 +2,7 @@
 #include "util_misc.hpp"
 
 static constexpr auto button_lookup_table = make_array<>(
+		std::tuple(RemoteButton::Joystick, "Joystick"),
 		std::tuple(RemoteButton::Left, "Left"),
 		std::tuple(RemoteButton::Right, "Right"),
 		std::tuple(RemoteButton::Up, "Up"),
@@ -20,12 +21,12 @@ std::ostream& operator<<(std::ostream& os, const RemoteButton& btn)
 
 std::ostream& operator<<(std::ostream& os, const RemoteState& st)
 {
-	os << "Remote buttons: [ ";
-	for (int i = 0; i < RemoteButton::_Count; i++) {
-		if (st.btn_mask & (1 << i)) {
-			os << static_cast<RemoteButton>(i) << " ";
+	os << "Remote buttons: " << std::hex << std::setw(2) << st.btn_mask << " [ ";
+	for (int btn_num = RemoteButton::_First; btn_num < RemoteButton::_Count; btn_num++) {
+		if (st.btn_mask & (1 << btn_num)) {
+			os << static_cast<RemoteButton>(btn_num) << " ";
 		}
 	}
-	os << "], joystick: " << st.joy.x << ", " << st.joy.y;
+	os << "], joystick: " << static_cast<int>(st.joy.x) << ", " << static_cast<int>(st.joy.y);
 	return os;
 }

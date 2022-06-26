@@ -1,8 +1,11 @@
 #pragma once
 
 #include "util_task.hpp"
+#include "util_lockable.hpp"
+#include "util_time.hpp"
 #include "util_queue.hpp"
 #include "util_misc.hpp"
+#include "wifi.h"
 
 #include "core_status_led.hpp"
 #include "cxx_espnow_message.hpp"
@@ -23,16 +26,11 @@
 
 namespace esp_now {
 
-using namespace std::literals;
-using Clock = std::chrono::system_clock;
-using std::chrono::milliseconds;
-using duration = milliseconds;
-using time_point = std::chrono::time_point<Clock, milliseconds>;
-
 using SendResult = bool;
 
 class ESPNow :
-	private Task
+	private Task,
+	private Lockable<std::shared_mutex>
 {
 public:
 	ESPNow();

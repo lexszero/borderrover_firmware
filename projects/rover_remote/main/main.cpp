@@ -6,8 +6,10 @@
 #include "util_time.hpp"
 #include "cxx_espnow.hpp"
 #include "body_control_message.hpp"
+#include "wifi.h"
 
 #include "argtable3/argtable3.h"
+#include "driver/adc.h"
 #include "esp_console.h"
 #include "esp_log.h"
 
@@ -53,24 +55,33 @@ Application::Application() :
 	state(),
 	led_red(std::make_shared<StatusLed>("led_red",
 				OutputGPIO("led_red", GPIO_NUM_4, true, true))),
-	led_blue(status_led),
+	led_blue(std::make_shared<StatusLed>("led_blue",
+				OutputGPIO("led_blue", GPIO_NUM_16, true, true))),
 	pixels(32*8, GPIO_NUM_13, 0),
 	buttons {
-		InputGPIO {"joystick",	GPIO_NUM_34,	false},
-		InputGPIO {"btn_left",	GPIO_NUM_32,	false},
-		InputGPIO {"btn_right",	GPIO_NUM_33,	false},
-		InputGPIO {"btn_up",	GPIO_NUM_25,	false},
-		InputGPIO {"btn_down",	GPIO_NUM_26,	false},
-		InputGPIO {"sw_red",	GPIO_NUM_27,	false},
-		InputGPIO {"sw_blue",	GPIO_NUM_14,	false},
+		InputGPIO {"joystick",	GPIO_NUM_23,	true, GPIO_PULLUP_ONLY},
+		InputGPIO {"btn_left",	GPIO_NUM_32,	false, GPIO_PULLDOWN_ONLY},
+		InputGPIO {"btn_right",	GPIO_NUM_33,	false, GPIO_PULLDOWN_ONLY},
+		InputGPIO {"btn_up",	GPIO_NUM_25,	false, GPIO_PULLDOWN_ONLY},
+		InputGPIO {"btn_down",	GPIO_NUM_26,	false, GPIO_PULLDOWN_ONLY},
+		InputGPIO {"sw_red",	GPIO_NUM_27,	false, GPIO_PULLDOWN_ONLY},
+		InputGPIO {"sw_blue",	GPIO_NUM_14,	false, GPIO_PULLDOWN_ONLY},
 	},
 	last_send_announce(),
 	last_send_state(),
 	last_receive()
 {
 	espnow->set_led(led_blue);
-	espnow->add_peer(PeerBroadcast, std::nullopt, 5);
-	espnow->add_peer(PeerRoverBody, std::nullopt, 5);
+	espnow->add_peer(PeerBroadcast, std::nullopt, DEFAULT_WIFI_CHANNEL);
+	espnow->add_peer(PeerRoverBody, std::nullopt, DEFAULT_WIFI_CHANNEL);
+	espnow->on_recv(static_cast<MessageType>(RoverBodyState),
+		[this](const Message& msg) {
+			auto& info = msg.payload_as<const BodyPackedState>();
+			ESP_LOGI(TAG, "BodyState lockout %d, outputs 0x%04x", info.lockout, info.outputs);
+			led_red->set(info.lockout);
+			led_red->blink_once(100);
+		});
+
 
 	pixels.leds.setNumSegments(1);
 	pixels.segments.emplace_back(pixels, "led", 0, 0, 170);
@@ -85,12 +96,13 @@ void Application::run()
 	while (1) {
 		const auto now = time_now();
 		try {
-			if (now - last_send_announce > 1s) {
-				espnow->send(Message(PeerBroadcast, esp_now::MessageId::Announce));
+			if (now - last_send_announce > 5s) {
 				last_send_announce = now;
+				espnow->send(Message(PeerBroadcast, esp_now::MessageId::Announce));
 			}
 			bool changed = poll_inputs();
-			if (changed || (now - last_send_state > 200ms)) {
+			auto since_last = now - last_send_state;
+			if ((changed && since_last > 5ms) || (since_last > 500ms)) {
 				ESP_LOGI(TAG, "%s", to_string(state).c_str());
 				espnow->send(MessageRoverRemoteState(PeerRoverBody, state));
 				last_send_state = now;
@@ -112,6 +124,7 @@ bool Application::poll_inputs()
 	for (const auto& btn : buttons) {
 		if (btn.get())
 			st.btn_mask |= (1 << i);
+		i++;
 	}
 	if (st.btn_mask != state.btn_mask) {
 		changed = true;
@@ -129,5 +142,5 @@ extern "C" void app_main() {
 
 	app = std::make_unique<Application>();
 
-	status_led->blink(100, 500);
+	status_led->set(false);
 }

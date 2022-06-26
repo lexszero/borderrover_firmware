@@ -14,6 +14,7 @@
 extern "C" {
 #endif
 
+#define DEFAULT_WIFI_CHANNEL 1
 esp_err_t wifi_init();
 void wifi_set_hostname(const char *hostname);
 void wifi_register_commands();

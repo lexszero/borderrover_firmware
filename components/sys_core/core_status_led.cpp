@@ -40,6 +40,7 @@ void StatusLed::set_mode(Mode new_mode)
 
 void StatusLed::set_mode(const unique_lock& lock, Mode new_mode)
 {
+	ESP_LOGI(name, "set_mode %d", to_underlying(new_mode));
 	current.mode = new_mode;
 	switch (new_mode) {
 		case Mode::Solid:
@@ -62,6 +63,8 @@ void StatusLed::blink_once(uint32_t _on_ms, uint32_t _repeat)
 {
 	ESP_LOGD(name, "Blink once on=%d repeat=%d", _on_ms, _repeat);
 	auto lock = take_unique_lock();
+	if (current.mode == Mode::Single)
+		return;
 	previous = current;
 	current.on_ms = _on_ms;
 	current.off_ms = _on_ms;

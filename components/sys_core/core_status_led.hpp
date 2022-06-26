@@ -28,6 +28,7 @@ class StatusLed :
 				uint32_t repeat = 0, uint32_t interval_ms = 0);
 
 	private:
+		using unique_lock = Lockable::unique_lock;
 		const char *name;
 		OutputGPIO gpio;
 		idf::esp_timer::ESPTimer timer;
@@ -44,7 +45,8 @@ class StatusLed :
 
 		State current, previous;
 
-		void timer_reset(uint32_t ms);
+		void set_mode(const unique_lock& lock, Mode mode);
+		void timer_reset(const unique_lock& lock, uint32_t ms);
 		void timer_cb(void);
 };
 

@@ -28,11 +28,17 @@ StatusLed::StatusLed(const char *name, OutputGPIO&& gpio) :
 
 void StatusLed::set(bool new_state)
 {
+	auto lock = take_unique_lock();
 	current.state = new_state;
-	set_mode(Mode::Solid);
+	set_mode(lock, Mode::Solid);
 }
 
 void StatusLed::set_mode(Mode new_mode)
+{
+	set_mode(take_unique_lock(), new_mode);
+}
+
+void StatusLed::set_mode(const unique_lock& lock, Mode new_mode)
 {
 	current.mode = new_mode;
 	switch (new_mode) {
@@ -42,12 +48,12 @@ void StatusLed::set_mode(Mode new_mode)
 
 		case Mode::Blinking:
 			gpio.set(true);
-			timer_reset(current.on_ms);
+			timer_reset(lock, current.on_ms);
 			break;
 		
 		case Mode::Single:
 			gpio.set(!gpio.get());
-			timer_reset(current.on_ms);
+			timer_reset(lock, current.on_ms);
 			break;
 	}
 }
@@ -55,27 +61,29 @@ void StatusLed::set_mode(Mode new_mode)
 void StatusLed::blink_once(uint32_t _on_ms, uint32_t _repeat)
 {
 	ESP_LOGD(name, "Blink once on=%d repeat=%d", _on_ms, _repeat);
+	auto lock = take_unique_lock();
 	previous = current;
 	current.on_ms = _on_ms;
 	current.off_ms = _on_ms;
 	current.pulse_repeat = _repeat;
-	set_mode(Mode::Single);
+	set_mode(lock, Mode::Single);
 }
 
 void StatusLed::blink(uint32_t _on_ms, uint32_t _off_ms, uint32_t _repeat, uint32_t _interval_ms)
 {
 	ESP_LOGD(name, "Blink on=%d off=%d repeat=%d interval=%d",
 			_on_ms, _off_ms, _repeat, _interval_ms);
+	auto lock = take_unique_lock();
 	if (!_off_ms)
 		_off_ms = _on_ms;
 	current.on_ms = _on_ms;
 	current.off_ms = _off_ms;
 	current.pulse_repeat = _repeat;
 	current.pulse_repeat_interval = _interval_ms;
-	set_mode(Mode::Blinking);
+	set_mode(lock, Mode::Blinking);
 }
 
-void StatusLed::timer_reset(uint32_t ms)
+void StatusLed::timer_reset(const unique_lock& lock, uint32_t ms)
 {
 	try {
 		timer.stop();
@@ -86,6 +94,7 @@ void StatusLed::timer_reset(uint32_t ms)
 
 void StatusLed::timer_cb(void)
 {
+	auto lock = take_unique_lock();
 	auto& s = current;
 	const auto led_state = gpio.get();
 	switch (s.mode) {
@@ -105,11 +114,11 @@ void StatusLed::timer_cb(void)
 						t_off = s.pulse_repeat_interval;
 					}
 				}
-				timer_reset(t_off);
+				timer_reset(lock, t_off);
 			}
 			else {
 				gpio.set(true);
-				timer_reset(s.on_ms);
+				timer_reset(lock, s.on_ms);
 			}
 			break;
 		
@@ -117,7 +126,7 @@ void StatusLed::timer_cb(void)
 			gpio.set(!led_state);
 
 			current = previous;
-			set_mode(current.mode);
+			set_mode(lock, current.mode);
 			break;
 	}
 }

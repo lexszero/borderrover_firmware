@@ -40,7 +40,6 @@ void StatusLed::set_mode(Mode new_mode)
 
 void StatusLed::set_mode(const unique_lock& lock, Mode new_mode)
 {
-	ESP_LOGI(name, "set_mode %d", to_underlying(new_mode));
 	current.mode = new_mode;
 	switch (new_mode) {
 		case Mode::Solid:

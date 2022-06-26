@@ -51,7 +51,7 @@ private:
 };
 
 Application::Application() :
-	Task(TAG, 16*1024, 20),
+	Task(TAG, 16*1024, 18),
 	state(),
 	led_red(std::make_shared<StatusLed>("led_red",
 				OutputGPIO("led_red", GPIO_NUM_4, true, true))),
@@ -84,7 +84,7 @@ Application::Application() :
 
 
 	pixels.leds.setNumSegments(1);
-	pixels.segments.emplace_back(pixels, "led", 0, 0, 170);
+	pixels.segments.emplace_back(pixels, "led", 0, 0, 32*8);
 	pixels.start();
 
 	Task::start();
@@ -102,7 +102,7 @@ void Application::run()
 			}
 			bool changed = poll_inputs();
 			auto since_last = now - last_send_state;
-			if ((changed && since_last > 5ms) || (since_last > 500ms)) {
+			if ((changed && since_last > 10ms) || (since_last > 500ms)) {
 				ESP_LOGI(TAG, "%s", to_string(state).c_str());
 				espnow->send(MessageRoverRemoteState(PeerRoverBody, state));
 				last_send_state = now;
@@ -111,7 +111,7 @@ void Application::run()
 		catch (const std::exception& e) {
 			ESP_LOGE(TAG, "Exception: %s", e.what());
 		}
-		std::this_thread::sleep_for(1ms);
+		std::this_thread::sleep_for(10ms);
 	}
 }
 

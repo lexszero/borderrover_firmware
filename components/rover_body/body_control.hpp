@@ -143,6 +143,7 @@ class BodyControl :
 		static constexpr auto WAIT_TIMEOUT = 10ms;
 
 		std::unique_ptr<State> state;
+		time_point last_state_send_time;
 		CallbackFn state_update_callback;
 
 		Leds::Output leds;

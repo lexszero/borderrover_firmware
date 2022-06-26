@@ -200,7 +200,7 @@ void Output::run()
 	leds.start();
 	while (1) {
 		leds.service();
-		vTaskDelay(10 / portTICK_PERIOD_MS);
+		vTaskDelay(20 / portTICK_PERIOD_MS);
 	}
 }
 

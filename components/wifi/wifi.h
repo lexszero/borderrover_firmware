@@ -17,6 +17,7 @@ extern "C" {
 #define DEFAULT_WIFI_CHANNEL 1
 esp_err_t wifi_init();
 void wifi_set_hostname(const char *hostname);
+void wifi_set_reconnect(bool reconnect);
 void wifi_register_commands();
 void wifi_wait_for_ip();
 

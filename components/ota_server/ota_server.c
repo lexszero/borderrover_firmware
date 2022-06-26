@@ -140,6 +140,7 @@ static void ota_server_task(void *param)
 	ESP_LOGI(TAG, "Next boot partition subtype %d at offset 0x%x",
 			boot_partition->subtype, boot_partition->address);
 	ESP_LOGI(TAG, "Prepare to restart system!");
+	wifi_set_reconnect(false);
 	esp_restart();
 
 	vTaskDelete(NULL);

@@ -414,13 +414,28 @@ void BodyControl::run()
 {
 	ESP_LOGI(TAG, "started");
 	Core::status_led->blink(500);
+	bool need_send_state = false;
 	while (1) {
-		auto event = events.wait(Event::Any, 1000 / portTICK_PERIOD_MS, true, false);
+		const auto event = events.wait(Event::Any, 10 / portTICK_PERIOD_MS, true, false);
+		const auto now = time_now();
 		ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));
 		if (event & Event::StateUpdate) {
 			Core::status_led->blink_once(50);
 			print_state();
-			espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
+			need_send_state = true;
+		}
+
+		auto since_last_state_send = now - last_state_send_time;
+		if ((since_last_state_send > 500ms) ||
+			(need_send_state && (since_last_state_send > 10ms))) {
+			try {
+				espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
+				last_state_send_time = now;
+				need_send_state = false;
+			}
+			catch (const std::exception& e) {
+				ESP_LOGE(TAG, "state send failed: %s", e.what());
+			}
 		}
 	}
 }
@@ -441,6 +456,9 @@ void BodyControl::handle_remote_state(const RemoteState& st)
 {
 	ESP_LOGI(TAG, "%s", to_string(st).c_str());
 	auto lock = take_unique_lock();
+	auto now = time_now();
+	remote_last_message_time = now;
+	remote_state_time = now;
 	if (st.is_pressed(RemoteButton::SwitchRed)) {
 		set_output(lock, OutputId::Lockout, true);
 		remote_button_direct_mapping(lock, st, RemoteButton::Left, OutputId::Valve0);

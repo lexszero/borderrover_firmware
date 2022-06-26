@@ -152,6 +152,11 @@ void wifi_set_hostname(const char *hostname)
 	ESP_ERROR_CHECK( esp_netif_set_hostname(netif_ap, hostname) );
 }
 
+void wifi_set_reconnect(bool val)
+{
+	reconnect = val;
+}
+
 void wifi_wait_for_ip()
 {
     ESP_LOGI(TAG, "Waiting for AP connection...");

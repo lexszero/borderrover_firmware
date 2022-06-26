@@ -18,6 +18,12 @@
 
 #define TAG "Core"
 
+extern "C"  void ota_server_start_callback()
+{
+	if (Core::status_led)
+		Core::status_led->blink(50, 50, 3, 400);
+}
+
 namespace Core {
 
 using esp_now::espnow;

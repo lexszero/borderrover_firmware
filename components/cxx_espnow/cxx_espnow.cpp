@@ -86,7 +86,8 @@ ESPNow::ESPNow() :
 
 	wifi_mode_t mode;
 	esp_wifi_get_mode(&mode);
-	iface = (mode == WIFI_MODE_STA) ? WIFI_IF_STA : WIFI_IF_AP;
+	//iface = (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) ? WIFI_IF_STA : WIFI_IF_AP;
+	iface = WIFI_IF_AP;
 
 	ret = esp_now_init();
 	if (ret != ESP_OK)
@@ -237,7 +238,7 @@ void ESPNow::handle_send_cb(ESPNow::EventSend& ev)
 {
 	const auto lock = take_unique_lock();
 	if (led)
-		led->blink_once(50);
+		led->blink_once(20);
 	auto found = peers.find(ev.peer);
 	if (found == peers.end()) {
 		ESP_LOGW(TAG, "send cb event for unknown peer %s", ::to_string(ev.peer).c_str());
@@ -258,7 +259,7 @@ void ESPNow::handle_recv_cb(ESPNow::EventRecv& ev)
 {
 	const auto lock = take_shared_lock();
 	if (led)
-		led->blink_once(50);
+		led->blink_once(20);
 	try {
 		auto msg = Message(ev.peer, ev.data, ev.data_len);
 		ev.release();

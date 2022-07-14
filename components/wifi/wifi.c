@@ -11,6 +11,7 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_console.h"
+#include "esp_ota_ops.h"
 #include "argtable3/argtable3.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -108,7 +109,7 @@ esp_err_t wifi_connect(wifi_config_t *config) {
 		ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, config));
 	}
 	ESP_ERROR_CHECK(esp_wifi_start());
-	ESP_ERROR_CHECK(esp_wifi_set_channel(DEFAULT_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE));
+	esp_wifi_set_channel(DEFAULT_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
 	ESP_ERROR_CHECK(esp_wifi_connect());
 
 	return ESP_OK;
@@ -141,6 +142,10 @@ esp_err_t wifi_init(void)
 	ESP_ERROR_CHECK(esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_cfg));
 	if (strlen((char *)wifi_cfg.sta.ssid) > 0) {
 		return wifi_connect(NULL);
+	}
+	else {
+		const esp_app_desc_t *app_desc = esp_ota_get_app_description();
+		return wifi_cmd_ap_set(app_desc->project_name, "iwillreturn42");
 	}
 
 	return ESP_OK;
@@ -236,7 +241,7 @@ static int wifi_cmd_scan(int argc, char** argv)
 	return 0;
 }
 
-static bool wifi_cmd_ap_set(const char* ssid, const char* pass)
+bool wifi_cmd_ap_set(const char* ssid, const char* pass)
 {
 	wifi_config_t wifi_config = {
 		.ap = {
@@ -264,6 +269,8 @@ static bool wifi_cmd_ap_set(const char* ssid, const char* pass)
 	}
 
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+	ESP_ERROR_CHECK(esp_wifi_start());
+	esp_wifi_set_channel(DEFAULT_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
 	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config));
 	return true;
 }

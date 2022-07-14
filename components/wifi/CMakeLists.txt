@@ -1,5 +1,5 @@
 idf_component_register(
 	SRC_DIRS "."
 	INCLUDE_DIRS "."
-	REQUIRES "console"
+	REQUIRES "console" "app_update"
 	)

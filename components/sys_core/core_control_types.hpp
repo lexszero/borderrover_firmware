@@ -35,6 +35,10 @@ public:
 		return value;
 	}
 
+	const Type& get() const {
+		return value;
+	}
+
 	virtual std::string show() override {
 		return to_string();
 	}

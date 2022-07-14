@@ -96,13 +96,13 @@ void Application::run()
 	while (1) {
 		const auto now = time_now();
 		try {
-			if (now - last_send_announce > 5s) {
+			if (now - last_send_announce > 1s) {
 				last_send_announce = now;
 				espnow->send(Message(PeerBroadcast, esp_now::MessageId::Announce));
 			}
 			bool changed = poll_inputs();
 			auto since_last = now - last_send_state;
-			if ((changed && since_last > 10ms) || (since_last > 500ms)) {
+			if ((changed && since_last > 10ms) || (since_last > 200ms)) {
 				ESP_LOGI(TAG, "%s", to_string(state).c_str());
 				espnow->send(MessageRoverRemoteState(PeerRoverBody, state));
 				last_send_state = now;

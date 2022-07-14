@@ -40,6 +40,11 @@ struct RemoteState
 	{
 		return btn_mask & (1 << to_underlying(button_id));
 	}
+
+	bool operator==(const RemoteState& other) {
+		return btn_mask == other.btn_mask;
+	}
+
 } __attribute__((__packed__));
 
 std::ostream& operator<<(std::ostream& os, const RemoteState& st);

@@ -85,38 +85,43 @@ Segment::Segment(Output& _output, const std::string& prefix, uint8_t _id, uint16
 	output(_output),
 	id(_id),
 	mode(prefix + "_mode", "Animation mode", (id+1)*10+1,
-			FX_MODE_BREATH,
+			56,
 			[this](uint8_t val) {
 				ESP_LOGI(TAG, "seg %d mode = %d", id, val);
 				output.leds.setMode(id, val);
 				output.sync_segments(id, [val](Segment& seg) {
 					seg.mode = val;
 				});
+				output.leds.trigger();
 			}),
 	speed(prefix + "_speed", "Animation speed", (id+1)*10+2,
-			128,
+			200,
 			[this](uint16_t val) {
 				ESP_LOGI(TAG, "seg %d speed = %d", id, val);
 				output.leds.setSpeed(id, convert_speed(val));
 				output.sync_segments(id, [val](Segment& seg) {
 					seg.speed = val;
 				});
+				output.leds.trigger();
 			}),
 	colors {
 		ControlRGB(prefix + "_color1", "Color 1",  (id+1)*10+3,
 				RgbColor{255, 0, 0},
 				[this](const RgbColor& c) {
 					output.set_color(id, 0, c);
+					output.leds.trigger();
 				}),
 		ControlRGB(prefix + "_color2", "Color 2", (id+1)*10+4,
 				RgbColor{0, 255, 0},
 				[this](const RgbColor& c) {
 					output.set_color(id, 1, c);
+					output.leds.trigger();
 				}),
 		ControlRGB(prefix + "_color3", "Color 3", (id+1)*10+5,
 				RgbColor{0, 0, 255},
 				[this](const RgbColor& c) {
 					output.set_color(id, 2, c);
+					output.leds.trigger();
 				}),
 	},
 	next(prefix + "_next", "Next mode", (id+1)*10+6,
@@ -124,6 +129,7 @@ Segment::Segment(Output& _output, const std::string& prefix, uint8_t _id, uint16
 				ESP_LOGI(TAG, "seg %d next", id);
 				auto m = output.leds.getMode(id);
 				mode = m == MODE_COUNT ? 0 : m + 1;
+				output.leds.trigger();
 			}),
 	prev(prefix + "_prev", "Prev mode", (id+1)*10+7,
 			[this](bool val) {
@@ -137,6 +143,7 @@ Segment::Segment(Output& _output, const std::string& prefix, uint8_t _id, uint16
 {
 	ESP_LOGI(TAG, "New segment: id %d, start %d, stop %d, reverse %d",
 			id, start, stop, reverse);
+	output.leds.trigger();
 }
 
 void Segment::init()
@@ -159,7 +166,7 @@ Output::Output(uint16_t num_leds, uint8_t pin, neoPixelType type) :
 		[](bool val) {
 			ESP_LOGI(TAG, "artnet = %d", val);
 		}),
-	brightness("brightness", "Brightness", 6, 255,
+	brightness("brightness", "Brightness", 6, 64,
 		[this](uint8_t val) {
 			leds.setBrightness(val);
 		}),

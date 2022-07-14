@@ -128,7 +128,6 @@ class BodyControl :
 		void reset();
 		OutputId get_output_id(const std::string& name);
 		bool set_output(OutputId output, bool on);
-		void get_output(OutputId output) const;
 		void pulse_output(OutputId output, uint8_t length_percent);
 		void test_outputs();
 		const State& get_state() const;
@@ -161,8 +160,11 @@ class BodyControl :
 		RemoteState remote;
 		time_point remote_last_message_time;
 		time_point remote_state_time;
+		void handle_loop();
 		void handle_remote_state(const RemoteState& remote);
-		void remote_button_direct_mapping(const unique_lock& lock,
+		void remote_button_mapping_direct(const unique_lock& lock,
+				const RemoteState& st, RemoteButton button, OutputId output);
+		void remote_button_mapping_toggle(const unique_lock& lock,
 				const RemoteState& st, RemoteButton button, OutputId output);
 
 		static std::shared_ptr<BodyControl> singleton_instance;

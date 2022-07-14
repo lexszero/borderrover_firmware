@@ -1,3 +1,4 @@
+#define LOG_LOCAL_LEVEL DEBUG
 #include "body_control.hpp"
 
 #include "core_status_led.hpp"
@@ -279,6 +280,14 @@ OutputGPIO& BodyControl::State::get_gpio(OutputId output)
 		return gpios[to_underlying(output)];
 }
 
+PulsedOutput& BodyControl::State::get_output(OutputId output)
+{
+	if (output == OutputId::Lockout)
+		throw std::runtime_error("output is not pulsed");
+	else
+		return outs[to_underlying(output)];
+}
+
 OutputId BodyControl::State::get_output_id(const std::string& name)
 {
 	int idx = 0;
@@ -414,29 +423,8 @@ void BodyControl::run()
 {
 	ESP_LOGI(TAG, "started");
 	Core::status_led->blink(500);
-	bool need_send_state = false;
 	while (1) {
-		const auto event = events.wait(Event::Any, 10 / portTICK_PERIOD_MS, true, false);
-		const auto now = time_now();
-		ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));
-		if (event & Event::StateUpdate) {
-			Core::status_led->blink_once(50);
-			print_state();
-			need_send_state = true;
-		}
-
-		auto since_last_state_send = now - last_state_send_time;
-		if ((since_last_state_send > 500ms) ||
-			(need_send_state && (since_last_state_send > 10ms))) {
-			try {
-				espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
-				last_state_send_time = now;
-				need_send_state = false;
-			}
-			catch (const std::exception& e) {
-				ESP_LOGE(TAG, "state send failed: %s", e.what());
-			}
-		}
+		handle_loop();
 	}
 }
 
@@ -446,10 +434,49 @@ void BodyControl::notify()
 	events.set(Event::StateUpdate);
 }
 
-void BodyControl::remote_button_direct_mapping(const unique_lock& lock, const RemoteState& st, RemoteButton btn, OutputId output)
+void BodyControl::remote_button_mapping_direct(const unique_lock& lock, const RemoteState& st, RemoteButton btn, OutputId output)
 {
-	(void)lock;
 	set_output(lock, output, st.is_pressed(btn));
+}
+
+void BodyControl::remote_button_mapping_toggle(const unique_lock& lock, const RemoteState& st, RemoteButton btn, OutputId output)
+{
+	if (st.is_pressed(btn))
+		set_output(lock, output, !state->get_gpio(output).get());
+}
+
+void BodyControl::handle_loop()
+{
+	const auto event = events.wait(Event::Any, 10 / portTICK_PERIOD_MS, true, false);
+
+	static bool need_send_state = false;
+	wifi_set_reconnect(false);
+	const auto now = time_now();
+	ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));
+	if (event & Event::StateUpdate) {
+		Core::status_led->blink_once(50);
+		print_state();
+		need_send_state = true;
+	}
+
+	const auto since_last_state_send = now - last_state_send_time;
+	if ((since_last_state_send > 200ms) ||
+			(need_send_state && (since_last_state_send > 10ms))) {
+		try {
+			espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
+			last_state_send_time = now;
+			need_send_state = false;
+		}
+		catch (const std::exception& e) {
+			ESP_LOGE(TAG, "state send failed: %s", e.what());
+		}
+	}
+
+	const auto since_last_remote_state = now - remote_last_message_time;
+	if (since_last_remote_state > 3s) {
+		set_output(OutputId::Lockout, false);
+	}
+
 }
 
 void BodyControl::handle_remote_state(const RemoteState& st)
@@ -459,14 +486,66 @@ void BodyControl::handle_remote_state(const RemoteState& st)
 	auto now = time_now();
 	remote_last_message_time = now;
 	remote_state_time = now;
+	if (remote == st)
+		return;
+	remote = st;
 	if (st.is_pressed(RemoteButton::SwitchRed)) {
 		set_output(lock, OutputId::Lockout, true);
-		remote_button_direct_mapping(lock, st, RemoteButton::Left, OutputId::Valve0);
-		remote_button_direct_mapping(lock, st, RemoteButton::Right, OutputId::Valve1);
-		remote_button_direct_mapping(lock, st, RemoteButton::Up, OutputId::Aux0);
-		remote_button_direct_mapping(lock, st, RemoteButton::Down, OutputId::Aux1);
+		if (!st.is_pressed(RemoteButton::SwitchBlue)) {
+			remote_button_mapping_direct(lock, st, RemoteButton::Left, OutputId::Valve0);
+			remote_button_mapping_direct(lock, st, RemoteButton::Right, OutputId::Valve1);
+			remote_button_mapping_direct(lock, st, RemoteButton::Up, OutputId::Aux0);
+			remote_button_mapping_direct(lock, st, RemoteButton::Down, OutputId::Aux1);
+		}
+		else {
+			auto& v0 = state->get_output(OutputId::Valve0);
+			auto& v1 = state->get_output(OutputId::Valve1);
+			remote_button_mapping_toggle(lock, st, RemoteButton::Left, OutputId::Valve0);
+			remote_button_mapping_toggle(lock, st, RemoteButton::Right, OutputId::Valve1);
+			if (st.is_pressed(RemoteButton::Joystick)) {
+				if (st.is_pressed(RemoteButton::Up)) {
+					v0.period = v0.period.get() + 1;
+					v1.period = v1.period.get() + 1;
+				}
+				if (st.is_pressed(RemoteButton::Down)) {
+					if (v0.period.get())
+						v0.period = v0.period.get() - 1;
+					if (v1.period.get())
+						v1.period = v1.period.get() - 1;
+				}
+			}
+			else {
+				if (st.is_pressed(RemoteButton::Up)) {
+					v0.t_on = v0.t_on.get() + 1;
+					v1.t_on = v1.t_on.get() + 1;
+				}
+				if (st.is_pressed(RemoteButton::Down)) {
+					if (v0.t_on.get())
+						v0.t_on = v0.t_on.get() - 1;
+					if (v1.t_on.get())
+						v1.t_on = v1.t_on.get() - 1;
+				}
+			}
+		}
 	}
 	else {
 		set_output(lock, OutputId::Lockout, false);
+		auto seg = leds.segments.begin();
+		if (st.is_pressed(RemoteButton::Joystick)) {
+			if (st.is_pressed(RemoteButton::Up))
+				seg->speed = seg->speed.get() + 10;
+			if (st.is_pressed(RemoteButton::Down) && seg->speed.get())
+				seg->speed = seg->speed.get() - 10;
+		}
+		else {
+			if (st.is_pressed(RemoteButton::Up))
+				seg->next.set(true);
+			if (st.is_pressed(RemoteButton::Down))
+				seg->prev.set(true);
+		}
+		remote_button_mapping_toggle(lock, st, RemoteButton::Left, OutputId::Valve0);
+		remote_button_mapping_toggle(lock, st, RemoteButton::Right, OutputId::Valve1);
+		remote_button_mapping_toggle(lock, st, RemoteButton::Up, OutputId::Aux0);
+		remote_button_mapping_toggle(lock, st, RemoteButton::Down, OutputId::Aux1);
 	}
 }

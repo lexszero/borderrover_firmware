@@ -146,7 +146,7 @@ class BodyControl :
 		CallbackFn state_update_callback;
 
 		Leds::Output leds;
-		std::shared_ptr<Core::StatusLed> led_link;
+		Core::StatusLed led_remote, led_action;
 
 		EventGroup<Event> events;
 
@@ -157,15 +157,29 @@ class BodyControl :
 		void register_console_cmd();
 		void handle_console_cmd(int argc, char **argv);
 
-		RemoteState remote;
-		time_point remote_last_message_time;
-		time_point remote_state_time;
+		template <typename StateType>
+		struct ControlDevice
+		{
+			StateType state;
+			time_point last_message_time;
+			time_point state_time;
+		};
+		ControlDevice<RemoteState> remote;
+		ControlDevice<JoypadState> joypad;
+
 		void handle_loop();
 		void handle_remote_state(const RemoteState& remote);
+		void handle_joypad_state(const JoypadState& joypad);
+
 		void remote_button_mapping_direct(const unique_lock& lock,
 				const RemoteState& st, RemoteButton button, OutputId output);
 		void remote_button_mapping_toggle(const unique_lock& lock,
 				const RemoteState& st, RemoteButton button, OutputId output);
+		void joypad_button_mapping_direct(const unique_lock& lock,
+				const JoypadState& st, JoypadButton button, OutputId output);
+		void joypad_button_mapping_toggle(const unique_lock& lock,
+				const JoypadState& st, JoypadButton button, OutputId output);
+
 
 		static std::shared_ptr<BodyControl> singleton_instance;
 

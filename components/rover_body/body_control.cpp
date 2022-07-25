@@ -12,6 +12,7 @@
 using namespace esp_now;
 
 static const PeerAddress PeerRemote(0x0c, 0xb8, 0x15, 0xf6, 0x6a, 0xed);
+static const PeerAddress PeerJoypad(0x78, 0x21, 0x84, 0x88, 0xb0, 0x1c);
 
 std::shared_ptr<BodyControl> BodyControl::singleton_instance = nullptr;
 
@@ -310,28 +311,36 @@ BodyControl::BodyControl() :
 	state(std::make_unique<State>(*this)),
 	state_update_callback(nullptr),
 	leds(32*8, GPIO_NUM_13, 0),
-	led_link(std::make_shared<Core::StatusLed>("led_link",
-		OutputGPIO("led_link", GPIO_NUM_26))),
+	led_remote("led_remote", OutputGPIO("led_remote", GPIO_NUM_26)),
+	led_action("led_action", OutputGPIO("led_remote", GPIO_NUM_27)),
 	events()
 {
 	singleton_instance = std::shared_ptr<BodyControl>(this);
 
-	espnow->set_led(led_link);
+	//espnow->set_led(Core::status_led);
 	espnow->add_peer(PeerBroadcast, std::nullopt, DEFAULT_WIFI_CHANNEL);
 	espnow->add_peer(PeerRemote, std::nullopt, DEFAULT_WIFI_CHANNEL);
 	espnow->on_recv(esp_now::MessageId::Announce,
 		[this](const Message& msg) {
 			auto peer = msg.peer();
 			ESP_LOGD(TAG, "Announce from %s", to_string(peer).c_str());
+			const auto now = time_now();
 			if (peer == PeerRemote) {
-				remote_last_message_time = time_now();
+				remote.last_message_time = now;
 			}
+			if (peer == PeerJoypad) {
+				joypad.last_message_time = now;
+			}
+			led_remote.blink_once(50);
 		});
 	espnow->on_recv(static_cast<MessageType>(RoverRemoteState),
 		[this](const Message& msg) {
 			handle_remote_state(msg.payload_as<const RemoteState>());
 		});
-
+	espnow->on_recv(static_cast<MessageType>(RoverJoypadState),
+		[this](const Message& msg) {
+			handle_joypad_state(msg.payload_as<const JoypadState>());
+		});
 	leds.leds.setNumSegments(1);
 	leds.segments.emplace_back(leds, "led", 0, 0, 32*8);
 	leds.start();
@@ -422,7 +431,7 @@ void BodyControl::print_state() const
 void BodyControl::run()
 {
 	ESP_LOGI(TAG, "started");
-	Core::status_led->blink(500);
+	Core::status_led->set(true);
 	while (1) {
 		handle_loop();
 	}
@@ -445,6 +454,18 @@ void BodyControl::remote_button_mapping_toggle(const unique_lock& lock, const Re
 		set_output(lock, output, !state->get_gpio(output).get());
 }
 
+void BodyControl::joypad_button_mapping_direct(const unique_lock& lock, const JoypadState& st, JoypadButton btn, OutputId output)
+{
+	set_output(lock, output, st.is_pressed(btn));
+}
+
+void BodyControl::joypad_button_mapping_toggle(const unique_lock& lock, const JoypadState& st, JoypadButton btn, OutputId output)
+{
+	if (st.is_pressed(btn))
+		set_output(lock, output, !state->get_gpio(output).get());
+}
+
+
 void BodyControl::handle_loop()
 {
 	const auto event = events.wait(Event::Any, 10 / portTICK_PERIOD_MS, true, false);
@@ -454,16 +475,17 @@ void BodyControl::handle_loop()
 	const auto now = time_now();
 	ESP_LOGD(TAG, "event 0x%08x", to_underlying(event));
 	if (event & Event::StateUpdate) {
-		Core::status_led->blink_once(50);
+		led_action.blink_once(100);
 		print_state();
 		need_send_state = true;
 	}
 
 	const auto since_last_state_send = now - last_state_send_time;
-	if ((since_last_state_send > 200ms) ||
+	if ((since_last_state_send > 500ms) ||
 			(need_send_state && (since_last_state_send > 10ms))) {
 		try {
 			espnow->send(MessageRoverBodyState(PeerBroadcast, state->pack()));
+			Core::status_led->blink_once(100);
 			last_state_send_time = now;
 			need_send_state = false;
 		}
@@ -472,23 +494,26 @@ void BodyControl::handle_loop()
 		}
 	}
 
-	const auto since_last_remote_state = now - remote_last_message_time;
-	if (since_last_remote_state > 3s) {
+	const auto since_last_remote_state = now - remote.last_message_time;
+	const auto since_last_joypad_state = now - joypad.last_message_time;
+	const auto since_last_action = now - state->timestamp;
+	if ((since_last_remote_state > 3s && since_last_joypad_state > 3s)
+			|| (since_last_action > 60s)) {
 		set_output(OutputId::Lockout, false);
 	}
-
 }
 
 void BodyControl::handle_remote_state(const RemoteState& st)
 {
 	ESP_LOGI(TAG, "%s", to_string(st).c_str());
+	led_remote.blink_once(50);
 	auto lock = take_unique_lock();
 	auto now = time_now();
-	remote_last_message_time = now;
-	remote_state_time = now;
-	if (remote == st)
+	remote.last_message_time = now;
+	remote.state_time = now;
+	if (remote.state == st)
 		return;
-	remote = st;
+	remote.state = st;
 	if (st.is_pressed(RemoteButton::SwitchRed)) {
 		set_output(lock, OutputId::Lockout, true);
 		if (!st.is_pressed(RemoteButton::SwitchBlue)) {
@@ -547,5 +572,36 @@ void BodyControl::handle_remote_state(const RemoteState& st)
 		remote_button_mapping_toggle(lock, st, RemoteButton::Right, OutputId::Valve1);
 		remote_button_mapping_toggle(lock, st, RemoteButton::Up, OutputId::Aux0);
 		remote_button_mapping_toggle(lock, st, RemoteButton::Down, OutputId::Aux1);
+	}
+}
+
+void BodyControl::handle_joypad_state(const JoypadState& st)
+{
+	ESP_LOGI(TAG, "%s", to_string(st).c_str());
+	led_remote.blink_once(50);
+	auto lock = take_unique_lock();
+	auto now = time_now();
+	joypad.last_message_time = now;
+	joypad.state_time = now;
+	if (joypad.state == st)
+		return;
+	joypad.state = st;
+
+	if (!state->lockout.get()) {
+		if (st.is_pressed(JoypadButton::L_Center) &&
+			st.is_pressed(JoypadButton::R_Center)) {
+			set_output(lock, OutputId::Lockout, true);
+		}
+	}
+	else {
+		if (st.is_pressed(JoypadButton::L_Center) &&
+			st.is_pressed(JoypadButton::R_Center)) {
+			set_output(lock, OutputId::Lockout, false);
+		}
+		else {
+			joypad_button_mapping_direct(lock, st, JoypadButton::R_Center, OutputId::Valve0);
+			joypad_button_mapping_direct(lock, st, JoypadButton::L_Shift, OutputId::Valve1);
+			joypad_button_mapping_direct(lock, st, JoypadButton::R_Shift, OutputId::Valve2);
+		}
 	}
 }

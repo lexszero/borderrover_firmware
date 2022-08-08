@@ -10,6 +10,7 @@ idf_component_register(
 		sys_core
 		leds
 		cxx_espnow
+		hover_drive
 	)
 
 set_source_files_properties(

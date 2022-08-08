@@ -310,6 +310,7 @@ BodyControl::BodyControl() :
 		}),
 	state(std::make_unique<State>(*this)),
 	state_update_callback(nullptr),
+	drive(UART_NUM_1),
 	leds(32*8, GPIO_NUM_13, 0),
 	led_remote("led_remote", OutputGPIO("led_remote", GPIO_NUM_26)),
 	led_action("led_action", OutputGPIO("led_remote", GPIO_NUM_27)),
@@ -470,6 +471,8 @@ void BodyControl::handle_loop()
 {
 	const auto event = events.wait(Event::Any, 10 / portTICK_PERIOD_MS, true, false);
 
+	joystick_drive(joypad.state.joy_right.x, joypad.state.joy_right.y);
+
 	static bool need_send_state = false;
 	wifi_set_reconnect(false);
 	const auto now = time_now();
@@ -500,6 +503,10 @@ void BodyControl::handle_loop()
 	if ((since_last_remote_state > 3s && since_last_joypad_state > 3s)
 			|| (since_last_action > 60s)) {
 		set_output(OutputId::Lockout, false);
+	}
+	if (since_last_joypad_state > 1s) {
+		joypad.state.joy_right.x = 0;
+		joypad.state.joy_right.y = 0;
 	}
 }
 
@@ -583,14 +590,29 @@ void BodyControl::handle_joypad_state(const JoypadState& st)
 	auto now = time_now();
 	joypad.last_message_time = now;
 	joypad.state_time = now;
-	if (joypad.state == st)
-		return;
 	joypad.state = st;
+	const bool buttons_action = joypad.state == st;
+	if (!buttons_action)
+		return;
 
+	auto seg = leds.segments.begin();
 	if (!state->lockout.get()) {
 		if (st.is_pressed(JoypadButton::L_Center) &&
 			st.is_pressed(JoypadButton::R_Center)) {
 			set_output(lock, OutputId::Lockout, true);
+		}
+		if (st.is_pressed(JoypadButton::L_Shift)) {
+			joypad_button_mapping_toggle(lock, st, JoypadButton::L_Center, OutputId::Aux0);
+			joypad_button_mapping_toggle(lock, st, JoypadButton::R_Center, OutputId::Aux1);
+		}
+		if (st.is_pressed(JoypadButton::R_Shift)) {
+			if (st.is_pressed(JoypadButton::L_Center))
+				seg->next.set(true);
+			if (st.is_pressed(JoypadButton::R_Center))
+				seg->prev.set(true);
+			if (st.is_pressed(JoypadButton::L_Shift))
+				seg->speed.set(st.joy_left.x);
+			leds.trigger.set(true);
 		}
 	}
 	else {
@@ -599,9 +621,26 @@ void BodyControl::handle_joypad_state(const JoypadState& st)
 			set_output(lock, OutputId::Lockout, false);
 		}
 		else {
-			joypad_button_mapping_direct(lock, st, JoypadButton::R_Center, OutputId::Valve0);
-			joypad_button_mapping_direct(lock, st, JoypadButton::L_Shift, OutputId::Valve1);
-			joypad_button_mapping_direct(lock, st, JoypadButton::R_Shift, OutputId::Valve2);
+			joypad_button_mapping_direct(lock, st, JoypadButton::L_Shift, OutputId::Valve0);
+			joypad_button_mapping_direct(lock, st, JoypadButton::R_Shift, OutputId::Valve1);
+			joypad_button_mapping_direct(lock, st, JoypadButton::L_Center, OutputId::Aux0);
+			joypad_button_mapping_direct(lock, st, JoypadButton::R_Center, OutputId::Aux1);
 		}
+	}
+}
+
+void BodyControl::joystick_drive(int x, int y)
+{
+	if (std::abs(x) > 20 || std::abs(y) > 50) {
+		auto speed = (std::abs(x) > 20)
+			? x * 10
+			: 0;
+		auto steer = (std::abs(y) > 20)
+			? y * 10
+			: 0;
+		drive.go(speed, steer);
+	}
+	else {
+		drive.go(0, 0);
 	}
 }

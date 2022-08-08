@@ -1,10 +1,11 @@
 #pragma once
 
-#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+//#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 
 #include "body_control_message.hpp"
 #include "core_control_types.hpp"
 #include "core_gpio.hpp"
+#include "hover_drive.hpp"
 
 #include "cxx_espnow.hpp"
 #include "esp_timer_cxx.hpp"
@@ -145,6 +146,7 @@ class BodyControl :
 		time_point last_state_send_time;
 		CallbackFn state_update_callback;
 
+		HoverDrive drive;
 		Leds::Output leds;
 		Core::StatusLed led_remote, led_action;
 
@@ -179,6 +181,8 @@ class BodyControl :
 				const JoypadState& st, JoypadButton button, OutputId output);
 		void joypad_button_mapping_toggle(const unique_lock& lock,
 				const JoypadState& st, JoypadButton button, OutputId output);
+
+		void joystick_drive(int x, int y);
 
 
 		static std::shared_ptr<BodyControl> singleton_instance;

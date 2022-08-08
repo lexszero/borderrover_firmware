@@ -26,7 +26,7 @@ using namespace esp_now;
 namespace {
 
 static const auto PeerRoverBody = PeerAddress(0x3c, 0x71, 0xbf, 0x58, 0xf2, 0x89);
-static constexpr auto JOY_THRESHOLD = 20;
+static constexpr auto JOY_THRESHOLD = 2;
 
 }  // namespace
 
@@ -54,7 +54,7 @@ private:
 	struct Axis {
 		Axis(adc_unit_t unit, adc_channel_t channel) :
 			adc(unit, channel, ADC_WIDTH_BIT_12, ADC_ATTEN_DB_11),
-			mv_min(0),
+			mv_min(5000),
 			mv_max(0)
 		{}
 
@@ -66,6 +66,8 @@ private:
 			if (mv > mv_max)
 				mv_max = mv;
 			auto mv_span = mv_max - mv_min;
+			if (std::abs(mv_span) < 500)
+				return 0;
 			auto mv_center = mv_min + mv_span/2;
 			return (mv - mv_center) * range / (mv_span/2);
 		}
@@ -112,8 +114,8 @@ Application::Application() :
 		InputGPIO {"R_joystick",	GPIO_NUM_12,	true, GPIO_PULLUP_ONLY},
 		InputGPIO {"R_center",		GPIO_NUM_27,	true, GPIO_PULLUP_ONLY},
 	},
-	joy_left(ADC_UNIT_1, ADC_CHANNEL_0, ADC_UNIT_1, ADC_CHANNEL_3),
-	joy_right(ADC_UNIT_1, ADC_CHANNEL_4, ADC_UNIT_1, ADC_CHANNEL_5),
+	joy_left(ADC_UNIT_1, ADC_CHANNEL_0, ADC_UNIT_1, ADC_CHANNEL_3, 64, 100),
+	joy_right(ADC_UNIT_1, ADC_CHANNEL_4, ADC_UNIT_1, ADC_CHANNEL_5, 64, -100),
 	last_send_announce(),
 	last_send_state(),
 	last_receive()
@@ -144,7 +146,7 @@ void Application::run()
 			}
 			bool changed = poll_inputs();
 			auto since_last = now - last_send_state;
-			if ((changed && since_last > 10ms) || (since_last > 200ms)) {
+			if ((changed && since_last > 20ms) || (since_last > 200ms)) {
 				ESP_LOGI(TAG, "%s", to_string(state).c_str());
 				espnow->send(MessageRoverJoypadState(PeerRoverBody, state));
 				last_send_state = now;

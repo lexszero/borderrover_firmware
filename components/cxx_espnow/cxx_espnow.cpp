@@ -179,6 +179,7 @@ std::shared_future<SendResult> ESPNow::send(const MessageInterface& msg)
 	}
 
 	const auto& data = msg.prepare(send_seq++);
+	ESP_LOGD(TAG, "send: %s", msg.to_string().c_str());
 	auto ret = esp_now_send(addr.bytes(), data.data(), data.size());
 	switch (ret) {
 		case ESP_ERR_ESPNOW_NOT_INIT:

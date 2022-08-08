@@ -104,8 +104,8 @@ public:
 		ostringstream ss;
 		ss << "Message[peer:" << peer_addr <<
 			", magic:" << hex << hdr.magic <<
-			", seq:" << hdr.seq <<
-			", type:" << hdr.type <<
+			", seq:" << dec << hdr.seq <<
+			", type:" << static_cast<unsigned>(hdr.type) <<
 			", len:" << static_cast<unsigned>(hdr.length) << "]{";
 		for (size_t i = sizeof(MessageHeader); i < buffer.size(); i++) {
 			ss << setfill('0') << setw(2) << right << hex << static_cast<unsigned>(buffer[i]);
